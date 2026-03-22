@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openenv"
-version = "0.1.0"
+version = "1.0.1"
 description = "Open-env: declarative Dockerized environments for OpenClaw agents"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -27,7 +27,10 @@ Issues = "https://github.com/fipciu1996/Open-env/issues"
 openenv = "openenv.cli:main"
 
 [project.optional-dependencies]
-dev = ["coverage[toml]>=7.6,<8.0"]
+dev = [
+  "coverage[toml]>=7.6,<8.0",
+  "changelog-cli>=0.7.1,<0.8.0",
+]
 docs = [
   "mkdocs>=1.6,<2.0",
   "mkdocstrings[python]>=0.18,<1.0",

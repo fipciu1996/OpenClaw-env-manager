@@ -1,0 +1,13 @@
+#!/bin/sh
+
+set -eu
+
+while read -r local_ref local_sha remote_ref remote_sha
+do
+  case "$local_ref" in
+    refs/tags/*.*.*|refs/tags/v*.*.*)
+      tag_name="${local_ref#refs/tags/}"
+      python .github/scripts/verify_release_tag.py "$tag_name"
+      ;;
+  esac
+done

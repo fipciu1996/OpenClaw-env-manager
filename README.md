@@ -56,7 +56,7 @@ Package publication to PyPI is handled by
 
 The release workflow is intentionally narrow:
 
-- it runs only on pushed Git tags matching `v*`
+- it runs only on pushed release tags matching `1.2.3` or `v1.2.3`
 - it verifies that the tag version matches `[project].version` in
   `pyproject.toml`
 - it builds both `sdist` and `wheel`
@@ -66,8 +66,35 @@ The release workflow is intentionally narrow:
 Example release tag:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+make install-hooks
+make release-tag VERSION=1.0.1 TAG_MESSAGE="Open-env 1.0.1"
+git push origin 1.0.1
+```
+
+Git does not provide a native `pre-tag` hook, so Open-env uses a practical
+replacement:
+
+- `python .github/scripts/create_release_tag.py <tag>` or
+  `make release-tag VERSION=<tag>` updates `pyproject.toml` and `CHANGELOG.md`,
+  creates a release commit, and only then creates the annotated tag
+- `.githooks/pre-push` verifies that every pushed release tag still matches the
+  package version and blocks the push when they diverge
+- changelog entries are managed through `changelog-cli`, which is installed as
+  part of `.[dev]`
+
+To activate the repository-managed hooks locally:
+
+```bash
+make install-hooks
+```
+
+Useful `changelog-cli` commands:
+
+```bash
+changelog entry added --message "Describe a new feature"
+changelog entry changed --message "Describe a behavior change"
+changelog entry fixed --message "Describe a bug fix"
+changelog current
 ```
 
 Once the package is published, installation from PyPI is:
