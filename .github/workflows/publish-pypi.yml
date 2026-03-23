@@ -6,6 +6,9 @@ on:
       - "*.*.*"
       - "v*.*.*"
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 permissions:
   contents: read
 
@@ -46,7 +49,7 @@ jobs:
         run: python -m twine check dist/*
 
       - name: Upload distribution artifacts
-        uses: actions/upload-artifact@v4.3.1
+        uses: actions/upload-artifact@v6.0.0
         with:
           name: python-package-distributions
           path: dist/
@@ -64,10 +67,10 @@ jobs:
       id-token: write
     environment:
       name: pypi
-      url: https://pypi.org/p/openenv
+      url: https://pypi.org/p/OpenClaw-env-manager
     steps:
       - name: Download distribution artifacts
-        uses: actions/download-artifact@v4.1.4
+        uses: actions/download-artifact@v7.0.0
         with:
           name: python-package-distributions
           path: dist/

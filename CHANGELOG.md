@@ -14,6 +14,10 @@ with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### New
 
 ### Changes
+* Renamed the installed console entrypoint to `clawopenenv` and added
+  `python -m clawopenenv` as the matching module execution path.
+* Renamed the PyPI distribution package to OpenClaw-env-manager while keeping the internal Python package and CLI command as openenv.
+* Upgraded GitHub artifact actions to Node 24 compatible versions and opted CI workflows into Node 24 execution early with FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true.
 
 ### Fixes
 

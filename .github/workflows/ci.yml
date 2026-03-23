@@ -7,6 +7,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 permissions:
   contents: read
 
@@ -84,7 +87,7 @@ jobs:
           cat .coverage-summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage artifacts
-        uses: actions/upload-artifact@v4.3.1
+        uses: actions/upload-artifact@v6.0.0
         with:
           name: coverage-report
           path: |

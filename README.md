@@ -14,10 +14,10 @@ It is inspired by Poetry's manifest-plus-lock workflow:
 
 - `openenv.toml` describes intent
 - `openenv.lock` captures deterministic build inputs
-- `openenv scan` runs an optional preflight security scan for materialized skills
-- `openenv export dockerfile` renders a standalone Dockerfile
-- `openenv export compose` renders a bot-specific docker-compose file
-- `openenv build` builds the image and enforces a build-time skill scan gate
+- `clawopenenv scan` runs an optional preflight security scan for materialized skills
+- `clawopenenv export dockerfile` renders a standalone Dockerfile
+- `clawopenenv export compose` renders a bot-specific docker-compose file
+- `clawopenenv build` builds the image and enforces a build-time skill scan gate
 
 ## Table Of Contents
 
@@ -100,7 +100,13 @@ changelog current
 Once the package is published, installation from PyPI is:
 
 ```bash
-python -m pip install openenv
+python -m pip install OpenClaw-env-manager
+```
+
+The installed console command is:
+
+```bash
+clawopenenv
 ```
 
 Before the first release, configure a PyPI Trusted Publisher for:
@@ -372,65 +378,71 @@ set. `openenv init` writes them explicitly into the starter manifest.
 Create a starter manifest:
 
 ```bash
-python -m openenv init
+clawopenenv init
 ```
 
 Open the interactive bot menu:
 
 ```bash
-python -m openenv
+clawopenenv
 ```
 
 Validate the manifest:
 
 ```bash
-python -m openenv validate
+clawopenenv validate
 ```
 
 Generate the lockfile:
 
 ```bash
-python -m openenv lock
+clawopenenv lock
 ```
 
 Run a skill security scan:
 
 ```bash
-python -m openenv scan -- --policy strict --fail-on-severity high
+clawopenenv scan -- --policy strict --fail-on-severity high
 ```
 
 Build the image with a stricter build-time scan policy:
 
 ```bash
-python -m openenv build --scan-policy strict --scan-fail-on-severity medium
+clawopenenv build --scan-policy strict --scan-fail-on-severity medium
 ```
 
 Export the Dockerfile:
 
 ```bash
-python -m openenv export dockerfile --output Dockerfile
+clawopenenv export dockerfile --output Dockerfile
 ```
 
 Export the bot compose file:
 
 ```bash
-python -m openenv export compose
+clawopenenv export compose
 ```
 
-`openenv export compose` also writes a sibling `Dockerfile`, so the generated
+`clawopenenv export compose` also writes a sibling `Dockerfile`, so the generated
 compose bundle can rebuild the bot image locally without any extra wiring.
 
 Build the image:
 
 ```bash
-python -m openenv build
+clawopenenv build
 ```
 
-`openenv build` also writes a compose file named after the bot, for example
+`clawopenenv build` also writes a compose file named after the bot, for example
 `docker-compose-operations-agent.yml`, next to the manifest.
 When `runtime.base_image` is not pinned with `@sha256`, Open-env first checks
 for the image locally and automatically tries `docker image pull <image>` if it
 is missing before failing lock generation.
+
+Module-oriented execution is also available through:
+
+```bash
+python -m clawopenenv
+```
 
 ## Makefile
 
@@ -462,7 +474,7 @@ make build TAG=openenv/demo:dev
 
 ## Interactive Bot Menu
 
-Running `openenv` without parameters opens a menu that lets you:
+Running `clawopenenv` without parameters opens a menu that lets you:
 
 - choose Polish or English as the interface language on entry
 - list managed bots
@@ -535,7 +547,7 @@ exists, its secret values are merged into the generated compose env file
 together with OpenClaw defaults such as image tag, ports, bind mode, and
 workspace paths.
 
-When `openenv scan` is used, the CLI materializes skills to a temporary
+When `clawopenenv scan` is used, the CLI materializes skills to a temporary
 directory and runs `skill-scanner scan-all ... --recursive` against that tree
 as a local preflight check. During `docker build`, the generated Dockerfile also
 runs `skill-scanner scan-all <workspace>/skills --recursive --check-overlap`,

@@ -3,7 +3,7 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "openenv"
+name = "OpenClaw-env-manager"
 version = "1.0.3"
 description = "Open-env: declarative Dockerized environments for OpenClaw agents"
 readme = "README.md"
@@ -24,7 +24,7 @@ Repository = "https://github.com/fipciu1996/Open-env"
 Issues = "https://github.com/fipciu1996/Open-env/issues"
 
 [project.scripts]
-openenv = "openenv.cli:main"
+clawopenenv = "openenv.cli:main"
 
 [project.optional-dependencies]
 dev = [

@@ -40,7 +40,7 @@ from openenv.templates.sample import SAMPLE_MANIFEST
 
 def build_parser() -> argparse.ArgumentParser:
     """Create the CLI parser."""
-    parser = argparse.ArgumentParser(prog="openenv", description="Open-env CLI")
+    parser = argparse.ArgumentParser(prog="clawopenenv", description="Open-env CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     init_parser = subparsers.add_parser("init", help="Create a starter openenv.toml")
@@ -309,7 +309,7 @@ def _load_and_verify_lockfile(
     ).manifest_hash
     if expected_hash != lockfile.manifest_hash:
         raise OpenEnvError(
-            "The lockfile does not match the current manifest. Run `openenv lock` again."
+            "The lockfile does not match the current manifest. Run `clawopenenv lock` again."
         )
     return manifest, lockfile, raw_manifest_text
 
