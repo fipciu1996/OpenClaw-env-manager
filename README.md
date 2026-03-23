@@ -42,11 +42,14 @@ It is inspired by Poetry's manifest-plus-lock workflow:
 GitHub Actions runs the test suite for every push to `main`, every pull request,
 and on manual dispatch. A separate coverage job runs the tests under
 `coverage.py`, uploads the raw reports as workflow artifacts, validates the
-MkDocs build, and publishes the HTML coverage report plus a generated coverage
-badge to GitHub Pages for pushes to `main`.
+MkDocs build, and publishes the generated MkDocs site to GitHub Pages for
+pushes to `main`. The same deployed Pages site also contains the HTML coverage
+report plus the generated coverage badge.
 
 Once GitHub Pages is enabled for the repository with `Build and deployment`
-configured to `GitHub Actions`, the published coverage site is available at
+configured to `GitHub Actions`, the published docs site is available at
+[fipciu1996.github.io/OpenClaw-env-manager/](https://fipciu1996.github.io/OpenClaw-env-manager/),
+while the coverage report stays under
 [fipciu1996.github.io/OpenClaw-env-manager/coverage/](https://fipciu1996.github.io/OpenClaw-env-manager/coverage/).
 
 ## Releases And PyPI
@@ -151,8 +154,11 @@ make docs-build
 make docs-serve
 ```
 
-Versioned documentation publishing is configured for GitLab Pages in
-`.gitlab-ci.yml`. The deployment model is:
+The latest documentation is also published from GitHub Actions to the root
+GitHub Pages site on pushes to `main`.
+
+Versioned documentation publishing remains configured for GitLab Pages in
+`.gitlab-ci.yml`. The GitLab deployment model is:
 
 - default branch: published at the root Pages URL
 - other branches: published under `branch-<ref-slug>/`

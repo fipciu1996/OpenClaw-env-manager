@@ -1,41 +1,10 @@
-"""Build static coverage site assets used by the CI workflow."""
+"""Build coverage assets inside the published documentation site."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 import shutil
-
-
-INDEX_HTML = """<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>OpenClaw-env-manager Coverage</title>
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        margin: 3rem auto;
-        max-width: 48rem;
-        padding: 0 1rem;
-        line-height: 1.6;
-      }
-      .badge-link {
-        font-weight: 700;
-      }
-    </style>
-  </head>
-  <body>
-    <h1>OpenClaw-env-manager Coverage</h1>
-    <p>This site publishes the latest GitHub Actions coverage report.</p>
-    <ul>
-      <li><a class="badge-link" href="./coverage/index.html">Open HTML coverage report</a></li>
-      <li><a href="./coverage.svg">Open coverage badge</a></li>
-    </ul>
-  </body>
-</html>
-"""
 
 BADGE_TEMPLATE = """<svg xmlns="http://www.w3.org/2000/svg" width="124" height="20" role="img" aria-label="coverage: {label}">
   <title>coverage: {label}</title>
@@ -59,14 +28,6 @@ BADGE_TEMPLATE = """<svg xmlns="http://www.w3.org/2000/svg" width="124" height="
   </g>
 </svg>
 """
-
-
-def build_index(site_dir: Path) -> None:
-    """Write the landing page for the published coverage site."""
-    site_dir.mkdir(parents=True, exist_ok=True)
-    (site_dir / "index.html").write_text(INDEX_HTML, encoding="utf-8")
-
-
 def copy_html_report(source_dir: Path, target_dir: Path) -> None:
     """Copy the generated HTML coverage report into the publish directory."""
     if target_dir.exists():
@@ -89,8 +50,8 @@ def write_summary(total_display: str, output_path: Path) -> None:
                 "## Coverage Summary",
                 "",
                 f"- Total coverage: **{total_display}%**",
-                "- Documentation build is validated in CI.",
-                "- The HTML coverage report is published via GitHub Pages on pushes to `main`.",
+                "- MkDocs documentation is published to GitHub Pages on pushes to `main`.",
+                "- The HTML coverage report is published under `/coverage/` on the same Pages site.",
             ]
         )
         + "\n",
@@ -122,12 +83,12 @@ def write_badge(total_percent: float, total_display: str, output_path: Path) -> 
 
 
 def main() -> None:
-    """Create the static coverage site layout expected by the CI workflow."""
+    """Add coverage assets to the MkDocs site layout expected by the CI workflow."""
     site_dir = Path("site")
     coverage_dir = site_dir / "coverage"
     total_percent, total_display = load_coverage_totals(Path("coverage.json"))
 
-    build_index(site_dir)
+    site_dir.mkdir(parents=True, exist_ok=True)
     copy_html_report(Path("htmlcov"), coverage_dir)
     write_summary(total_display, Path(".coverage-summary.md"))
     write_badge(total_percent, total_display, site_dir / "coverage.svg")

@@ -79,7 +79,7 @@ jobs:
           python -m coverage html
 
       - name: Validate documentation build
-        run: python -m mkdocs build --strict -d site-docs
+        run: python -m mkdocs build --strict -d site
 
       - name: Build coverage site
         run: |
@@ -95,7 +95,6 @@ jobs:
             coverage.json
             htmlcov/
             site/
-            site-docs/
             site/coverage.svg
           retention-days: 7
           if-no-files-found: error
@@ -107,7 +106,7 @@ jobs:
           path: site
 
   deploy-coverage:
-    name: Deploy coverage site
+    name: Deploy documentation site
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs:
       - coverage

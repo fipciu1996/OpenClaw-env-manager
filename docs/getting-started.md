@@ -49,8 +49,8 @@ make docs-serve
 
 ## CI Integration
 
-GitHub Actions builds the documentation site in CI together with coverage. On
-pushes to `main`, the published GitHub Pages site serves:
+GitHub Actions builds and publishes the documentation site in CI together with
+coverage. On pushes to `main`, the published GitHub Pages site serves:
 
 - the MkDocs site at the repository root
 - the HTML coverage report under `/coverage/`
