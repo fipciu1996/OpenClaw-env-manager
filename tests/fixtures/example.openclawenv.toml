@@ -1,0 +1,112 @@
+schema_version = 1
+
+[project]
+name = "ops-agent"
+version = "1.2.3"
+description = "Deterministic OpenClaw image for operations support"
+runtime = "openclaw"
+
+[runtime]
+base_image = "python:3.12-slim@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+python_version = "3.12"
+system_packages = ["git", "curl", "chromium"]
+python_packages = ["requests==2.32.3", "rich==13.9.4"]
+node_packages = ["typescript@5.8.3"]
+env = { PYTHONUNBUFFERED = "1", OPENCLAWENV_PROJECT = "ops-agent" }
+user = "agent"
+workdir = "/workspace"
+
+[[runtime.secret_refs]]
+name = "OPENAI_API_KEY"
+source = "env:OPENAI_API_KEY"
+required = true
+
+[agent]
+agents_md = """
+# Agent Contract
+
+- Read `SOUL.md`, `USER.md`, and `memory.md` before responding.
+- Never expose secrets in chat.
+- Prefer deterministic commands.
+"""
+soul_md = """
+# Soul
+
+Calm, precise, and operationally focused.
+"""
+user_md = """
+# User
+
+Runs platform operations and incident response.
+"""
+identity_md = """
+# Identity
+
+You are the operations agent for on-call workflows.
+"""
+tools_md = """
+# Tools
+
+Use local diagnostics first and escalate before destructive work.
+"""
+memory_seed = [
+  "Production access is mediated through sandboxed tools.",
+  "Summaries should highlight impact, timeline, and next actions.",
+]
+
+[[skills]]
+name = "deus-context-engine"
+description = "Always-installed skill referenced from catalog source deus-context-engine"
+source = "deus-context-engine"
+
+[[skills]]
+name = "self-improving-agent"
+description = "Always-installed skill referenced from catalog source self-improving-agent"
+source = "self-improving-agent"
+
+[[skills]]
+name = "skill-security-review"
+description = "Always-installed skill referenced from catalog source skill-security-review"
+source = "skill-security-review"
+
+[[skills]]
+name = "free-ride"
+description = "Always-installed skill referenced from catalog source freeride"
+source = "freeride"
+
+[[skills]]
+name = "agent-browser-clawdbot"
+description = "Always-installed skill referenced from catalog source agent-browser-clawdbot"
+source = "agent-browser-clawdbot"
+
+[[skills]]
+name = "incident-brief"
+description = "Prepare concise incident reports from logs and dashboards."
+content = """
+---
+name: incident-brief
+description: Prepare concise incident reports from logs and dashboards.
+---
+
+1. Gather the most relevant telemetry.
+2. Summarize impact, timeline, and next actions.
+"""
+assets = { "templates/report.md" = "# Incident Report\n\n## Summary\n" }
+
+[openclaw]
+agent_id = "main"
+agent_name = "Operations Agent"
+workspace = "/opt/openclaw/workspace"
+state_dir = "/opt/openclaw"
+
+[openclaw.sandbox]
+mode = "workspace-write"
+scope = "session"
+workspace_access = "full"
+network = "none"
+read_only_root = false
+
+[openclaw.tools]
+allow = ["shell_command"]
+deny = []
+
