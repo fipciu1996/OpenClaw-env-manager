@@ -12,10 +12,13 @@ with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ---
 
 ### New
+* Added regression tests for the GitHub Pages deploy helper so authentication URL building and token redaction are covered locally.
 
 ### Changes
+* Updated the GitHub Pages deploy workflow to pass explicit GitHub repository metadata and token environment variables into the deploy step.
 
 ### Fixes
+* Hardened the GitHub Pages deploy helper to prefer direct `GITHUB_TOKEN` authentication, redact git failure output, and push the generated site with `HEAD:<branch>` semantics that are more reliable for artifact-only branches.
 
 ### Breaks
 

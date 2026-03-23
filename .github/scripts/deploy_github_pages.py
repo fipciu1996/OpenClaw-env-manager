@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from urllib.parse import quote, urlsplit, urlunsplit
 
 
 BOT_NAME = "github-actions[bot]"
@@ -20,13 +21,19 @@ def run_git(
     check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     """Run a git command and return its completed process object."""
-    return subprocess.run(
-        ["git", *_git_auth_config_args(), *args],
-        cwd=cwd,
-        check=check,
-        text=True,
-        capture_output=True,
-    )
+    command = ["git", *_git_auth_config_args(), *args]
+    try:
+        return subprocess.run(
+            command,
+            cwd=cwd,
+            check=check,
+            text=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        if not check:
+            raise
+        raise SystemExit(_format_git_failure(command, exc)) from exc
 
 
 def parse_args() -> argparse.Namespace:
@@ -54,7 +61,23 @@ def parse_args() -> argparse.Namespace:
 
 def remote_url() -> str:
     """Return the current repository origin URL."""
+    token = os.environ.get("GITHUB_TOKEN")
+    repository = os.environ.get("GITHUB_REPOSITORY")
+    if token and repository:
+        server_url = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
+        return build_authenticated_remote_url(server_url, repository, token)
     return run_git("remote", "get-url", "origin").stdout.strip()
+
+
+def build_authenticated_remote_url(server_url: str, repository: str, token: str) -> str:
+    """Build an HTTPS remote URL that authenticates with GitHub Actions token auth."""
+    parsed = urlsplit(server_url)
+    scheme = parsed.scheme or "https"
+    netloc = parsed.netloc or "github.com"
+    token_part = quote(token, safe="")
+    auth_netloc = f"x-access-token:{token_part}@{netloc}"
+    path = "/" + repository.strip("/") + ".git"
+    return urlunsplit((scheme, auth_netloc, path, "", ""))
 
 
 def _git_auth_config_args() -> list[str]:
@@ -76,6 +99,31 @@ def _git_auth_config_args() -> list[str]:
             continue
         args.extend(["-c", f"{key}={value}"])
     return args
+
+
+def _format_git_failure(
+    command: list[str],
+    error: subprocess.CalledProcessError,
+) -> str:
+    """Render a concise git failure message with stderr/stdout details."""
+    rendered_command = " ".join(_redact_sensitive_part(part) for part in command)
+    stderr = (error.stderr or "").strip()
+    stdout = (error.stdout or "").strip()
+    details: list[str] = [f"Git command failed: {rendered_command}"]
+    if stderr:
+        details.append(f"stderr:\n{_redact_sensitive_part(stderr)}")
+    if stdout:
+        details.append(f"stdout:\n{_redact_sensitive_part(stdout)}")
+    return "\n".join(details)
+
+
+def _redact_sensitive_part(value: str) -> str:
+    """Redact token-bearing auth material before surfacing command failures."""
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    rendered = value
+    if token:
+        rendered = rendered.replace(token, "***")
+    return rendered.replace("x-access-token:***@", "x-access-token:***@")
 
 
 def clone_target_branch(remote: str, branch: str, target_dir: Path) -> None:
@@ -154,7 +202,7 @@ def main() -> None:
         replace_site_contents(site_dir, target_dir)
 
         if commit_if_needed(target_dir, args.commit_message):
-            run_git("push", "origin", branch, cwd=target_dir)
+            run_git("push", "--force", "origin", f"HEAD:{branch}", cwd=target_dir)
             print(f"Published {site_dir} to {branch}.")
 
 

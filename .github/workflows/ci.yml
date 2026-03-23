@@ -124,4 +124,8 @@ jobs:
           path: _site-artifacts
 
       - name: Deploy site to gh-pages
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
         run: python .github/scripts/deploy_github_pages.py --site-dir _site-artifacts/site --branch gh-pages
