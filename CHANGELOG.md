@@ -14,12 +14,21 @@ with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### New
 
 ### Changes
-* GitHub Actions now publishes the MkDocs documentation site to GitHub Pages, while keeping the generated coverage report under `/coverage/` on the same deployed site.
-* Replaced the deprecated Node 20 GitHub Pages actions with a repository-managed deploy script that publishes the generated site to the `gh-pages` branch.
 
 ### Fixes
 
 ### Breaks
+
+
+## 1.1.2 - (2026-03-23)
+---
+
+### Changes
+* GitHub Actions now publishes the MkDocs documentation site to GitHub Pages, while keeping the generated coverage report under `/coverage/` on the same deployed site.
+* Replaced the deprecated Node 20 GitHub Pages actions with a repository-managed deploy script that publishes the generated site to the `gh-pages` branch.
+* Renamed the generated manifest and lockfile defaults from `openenv.*` to `openclawenv.*` while keeping compatibility with existing bot directories and legacy file names.
+* Updated generated Dockerfiles for `alpine/openclaw:main` to install packages as `root` and restore the `node` runtime user afterwards, so package installation succeeds without breaking the default OpenClaw gateway runtime.
+* Added tracked `openclawenv` documentation and fixture files used by MkDocs navigation and the CLI/manifests test suite.
 
 
 ## 1.1.1 - (2026-03-23)
