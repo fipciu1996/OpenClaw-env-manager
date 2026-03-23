@@ -7,17 +7,24 @@ and follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) together
 with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+
 ## Unreleased
 ---
 
 ### New
 
 ### Changes
-* The release tag helper now configures Git safe.directory automatically, so local release tagging works in protected repositories.
 
 ### Fixes
 
 ### Breaks
+
+
+## 1.0.3 - (2026-03-23)
+---
+
+### Changes
+* The release tag helper now configures Git safe.directory automatically, so local release tagging works in protected repositories.
 
 
 ## 1.0.2 - (2026-03-22)
