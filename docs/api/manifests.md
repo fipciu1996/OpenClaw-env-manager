@@ -1,7 +1,7 @@
 # Manifests
 
-These modules parse `openenv.toml`, normalize the internal model, render
-manifests back to TOML, and generate `openenv.lock`.
+These modules parse `openclawenv.toml`, normalize the internal model, render
+manifests back to TOML, and generate `openclawenv.lock`.
 
 ## `openenv.manifests`
 

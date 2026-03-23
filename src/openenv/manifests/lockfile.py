@@ -205,7 +205,7 @@ def _resolve_python_requirement(requirement: str) -> dict[str, str]:
         }
 
     raise LockResolutionError(
-        "Open-env v1 locks only exact Python requirements. "
+        "OpenClawenv v1 locks only exact Python requirements. "
         f"Use 'package==version' or 'name @ URL': {requirement}"
     )
 
@@ -222,7 +222,7 @@ def _resolve_node_requirement(requirement: str) -> dict[str, str]:
         }
 
     raise LockResolutionError(
-        "Open-env v1 locks only exact Node requirements. "
+        "OpenClawenv v1 locks only exact Node requirements. "
         f"Use 'package@version' or '@scope/package@version': {requirement}"
     )
 

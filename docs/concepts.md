@@ -2,7 +2,7 @@
 
 ## Manifest First
 
-`openenv.toml` is the canonical source of truth. It describes:
+`openclawenv.toml` is the canonical source of truth. It describes:
 
 - project metadata
 - runtime dependencies and defaults
@@ -12,7 +12,7 @@
 
 ## Deterministic Build Inputs
 
-`openenv.lock` captures the resolved state needed to rebuild the environment.
+`openclawenv.lock` captures the resolved state needed to rebuild the environment.
 That includes:
 
 - the resolved base image reference with digest
@@ -39,7 +39,7 @@ managing bots under `bots/<slug>/`.
 
 Managed bots keep:
 
-- `openenv.toml` as the manifest
+- `openclawenv.toml` as the manifest
 - `AGENTS.md`, `SOUL.md`, `USER.md`, `IDENTITY.md`, `TOOLS.md`, and `memory.md`
   as sibling documents
 - `.env` as the local secret sidecar file
@@ -59,5 +59,5 @@ The workflow includes:
 ## API Reference Strategy
 
 The API pages in this site are generated with `mkdocstrings`. That means the
-reference stays close to the code structure in `src/openenv/` and updates as the
+reference stays close to the internal code structure and updates as the
 package evolves.

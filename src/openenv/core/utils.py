@@ -31,7 +31,7 @@ def sha256_text(text: str) -> str:
 def slugify_name(value: str) -> str:
     """Normalize a project name for file and image tags."""
     normalized = _NAME_NORMALIZER.sub("-", value.strip().lower()).strip("-")
-    return normalized or "openenv-agent"
+    return normalized or "openclawenv-agent"
 
 
 def encode_payload(value: Any) -> str:

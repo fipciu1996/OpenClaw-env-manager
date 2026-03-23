@@ -1,4 +1,4 @@
-"""Core primitives shared across Open-env."""
+"""Core primitives shared across OpenClawenv."""
 
 from openenv.core.skills import (
     MANDATORY_SKILL_SOURCES,

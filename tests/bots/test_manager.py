@@ -7,9 +7,24 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+from openenv.bots import manager as bot_manager
 from openenv.bots.manager import (
     BotAnswers,
     DocumentImprovementResult,
+    _bot_from_selection,
+    _ensure_bot_agent_documents_materialized,
+    _hydrate_skill_from_snapshot,
+    _load_running_bot,
+    _normalize_language,
+    _prompt_csv,
+    _prompt_csv_with_default,
+    _prompt_nonempty,
+    _render_tools_markdown,
+    _require_language,
+    _resolve_openrouter_api_key,
+    _running_bot_from_selection,
+    _select_language,
+    _unique_paths,
     create_bot,
     create_skill_snapshot,
     delete_bot,
@@ -22,10 +37,13 @@ from openenv.bots.manager import (
     load_bot,
     update_bot,
 )
+from openenv.core.errors import OpenEnvError
+from openenv.core.models import SkillConfig
 from openenv.core.skills import MANDATORY_SKILL_SOURCES
 from openenv.docker.runtime import CapturedSkill
 from openenv.cli import main
 from openenv.manifests.lockfile import build_lockfile as build_lockfile_for_test
+from openenv.manifests.writer import render_manifest
 
 
 TESTS_ROOT = Path(__file__).resolve().parents[1]
@@ -222,7 +240,7 @@ class BotManagerTests(unittest.TestCase):
         self.assertTrue(artifacts.dockerfile_path.exists())
         self.assertTrue(artifacts.compose_path.exists())
         self.assertTrue(artifacts.env_path.exists())
-        self.assertEqual(artifacts.image_tag, "openenv/bundle-bot:0.1.0")
+        self.assertEqual(artifacts.image_tag, "openclawenv/bundle-bot:0.1.0")
         self.assertIn(
             "# syntax=docker/dockerfile:1",
             artifacts.dockerfile_path.read_text(encoding="utf-8"),
@@ -362,7 +380,7 @@ class BotManagerTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         output = stdout.getvalue()
-        self.assertIn("Open-env - Interactive menu", output)
+        self.assertIn("OpenClawenv - Interactive menu", output)
         self.assertIn("Registered bots:", output)
         self.assertIn("Generated Dockerfile:", output)
         self.assertIn("Generated docker-compose:", output)
@@ -603,12 +621,12 @@ class BotManagerTests(unittest.TestCase):
 
         self.assertEqual(result.added_skill_names, ["extra-skill"])
         self.assertIsNotNone(result.lock_path)
-        manifest_text = (self.work_dir / "bots" / "snapshot-bot" / "openenv.toml").read_text(
+        manifest_text = (self.work_dir / "bots" / "snapshot-bot" / "openclawenv.toml").read_text(
             encoding="utf-8"
         )
         self.assertIn('name = "extra-skill"', manifest_text)
         self.assertIn('source = "acme/extra-skill"', manifest_text)
-        self.assertTrue((self.work_dir / "bots" / "snapshot-bot" / "openenv.lock").exists())
+        self.assertTrue((self.work_dir / "bots" / "snapshot-bot" / "openclawenv.lock").exists())
 
     def test_interactive_running_bots_can_show_logs(self) -> None:
         create_bot(
@@ -659,6 +677,829 @@ class BotManagerTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         menu.assert_called_once()
 
+    def test_interactive_menu_reprompts_language_and_unknown_main_option(self) -> None:
+        answers = iter(["??", "en", "9", "6"])
+        stdout = io.StringIO()
+
+        with patch("builtins.input", side_effect=lambda _: next(answers)):
+            with redirect_stdout(stdout):
+                exit_code = interactive_menu(self.work_dir)
+
+        self.assertEqual(exit_code, 0)
+        output = stdout.getvalue()
+        self.assertIn("Unknown choice", output)
+        self.assertIn("Unknown option. Choose 1, 2, 3, 4, 5, or 6.", output)
+
+    def test_interactive_running_bots_snapshot_reports_no_changes(self) -> None:
+        create_bot(
+            self.work_dir,
+            BotAnswers(
+                display_name="Snapshot Bot",
+                role="Runtime snapshotting",
+                skill_sources=[],
+                system_packages=[],
+                python_packages=[],
+                node_packages=[],
+                secret_names=[],
+                websites=[],
+                databases=[],
+                access_notes=[],
+            ),
+        )
+        with patch(
+            "openenv.bots.manager.build_lockfile",
+            side_effect=self._build_stub_lockfile,
+        ):
+            generate_bot_artifacts(self.work_dir, "snapshot-bot")
+
+        answers = iter(["en", "5", "1", "2", "6"])
+        stdout = io.StringIO()
+        with patch(
+            "openenv.bots.manager.list_running_container_names",
+            return_value={"snapshot-bot-openclaw-gateway"},
+        ):
+            with patch(
+                "openenv.bots.manager.create_skill_snapshot",
+                return_value=type(
+                    "Result",
+                    (),
+                    {
+                        "added_skill_names": [],
+                        "hydrated_skill_names": [],
+                        "manifest_path": self.work_dir / "bots" / "snapshot-bot" / "openclawenv.toml",
+                        "lock_path": None,
+                    },
+                )(),
+            ):
+                with patch("builtins.input", side_effect=lambda _: next(answers)):
+                    with redirect_stdout(stdout):
+                        exit_code = interactive_menu(self.work_dir)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("did not detect any new skill changes", stdout.getvalue())
+
+    def test_interactive_browse_running_bots_reports_discovery_error(self) -> None:
+        answers = iter(["en", "5", "6"])
+        stdout = io.StringIO()
+        with patch(
+            "openenv.bots.manager.discover_running_bots",
+            side_effect=OpenEnvError("docker not available"),
+        ):
+            with patch("builtins.input", side_effect=lambda _: next(answers)):
+                with redirect_stdout(stdout):
+                    exit_code = interactive_menu(self.work_dir)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Failed to inspect running bots", stdout.getvalue())
+
+    def test_edit_and_delete_report_no_bots(self) -> None:
+        answers = iter(["en", "3", "4", "6"])
+        stdout = io.StringIO()
+        with patch("builtins.input", side_effect=lambda _: next(answers)):
+            with redirect_stdout(stdout):
+                exit_code = interactive_menu(self.work_dir)
+
+        self.assertEqual(exit_code, 0)
+        output = stdout.getvalue()
+        self.assertIn("There are no bots to edit.", output)
+        self.assertIn("There are no bots to delete.", output)
+
+    def test_interactive_delete_can_be_cancelled(self) -> None:
+        create_bot(
+            self.work_dir,
+            BotAnswers(
+                display_name="Cancel Bot",
+                role="Delete cancellation",
+                skill_sources=[],
+                system_packages=[],
+                python_packages=[],
+                node_packages=[],
+                secret_names=[],
+                websites=[],
+                databases=[],
+                access_notes=[],
+            ),
+        )
+        answers = iter(["en", "4", "1", "n", "6"])
+        stdout = io.StringIO()
+        with patch("builtins.input", side_effect=lambda _: next(answers)):
+            with redirect_stdout(stdout):
+                exit_code = interactive_menu(self.work_dir)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Deletion cancelled.", stdout.getvalue())
+        self.assertTrue((self.work_dir / "bots" / "cancel-bot").exists())
+
+    def test_interactive_bot_actions_reports_openrouter_failure(self) -> None:
+        create_bot(
+            self.work_dir,
+            BotAnswers(
+                display_name="Docs Bot",
+                role="Improving documentation",
+                skill_sources=[],
+                system_packages=[],
+                python_packages=[],
+                node_packages=[],
+                secret_names=[],
+                websites=[],
+                databases=[],
+                access_notes=[],
+            ),
+        )
+        answers = iter(["en", "1", "1", "2", "Improve docs", "6"])
+        stdout = io.StringIO()
+        with patch(
+            "openenv.bots.manager.improve_bot_markdown_documents",
+            side_effect=OpenEnvError("OpenRouter unavailable"),
+        ):
+            with patch("openenv.bots.manager.get_project_env_value", return_value="key"):
+                with patch("builtins.input", side_effect=lambda _: next(answers)):
+                    with redirect_stdout(stdout):
+                        exit_code = interactive_menu(self.work_dir)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Failed to improve documents", stdout.getvalue())
+
+    def test_prompt_helpers_cover_empty_and_default_paths(self) -> None:
+        with patch("builtins.input", side_effect=["", "  ", "final"]):
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                value = _prompt_nonempty("Prompt: ", "en")
+        self.assertEqual(value, "final")
+        self.assertIn("This field is required.", stdout.getvalue())
+
+        with patch("builtins.input", return_value=""):
+            self.assertEqual(_prompt_csv("CSV: "), [])
+            self.assertEqual(_prompt_csv_with_default("CSV: ", ["a", "b"]), ["a", "b"])
+
+        with patch("builtins.input", return_value=" one, two ,, three "):
+            self.assertEqual(_prompt_csv("CSV: "), ["one", "two", "three"])
+
+    def test_selection_helpers_reject_invalid_values(self) -> None:
+        record = create_bot(
+            self.work_dir,
+            BotAnswers(
+                display_name="Select Bot",
+                role="Selection",
+                skill_sources=[],
+                system_packages=[],
+                python_packages=[],
+                node_packages=[],
+                secret_names=[],
+                websites=[],
+                databases=[],
+                access_notes=[],
+            ),
+        )
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            self.assertIsNone(_bot_from_selection([record], "x", "en"))
+            self.assertIsNone(_bot_from_selection([record], "2", "en"))
+            self.assertIsNone(_running_bot_from_selection([], "1", "en"))
+
+        self.assertIn("invalid", stdout.getvalue().lower())
+        self.assertIn("out of range", stdout.getvalue())
+
+    def test_language_helpers_cover_aliases_and_validation(self) -> None:
+        self.assertEqual(_normalize_language("POLSKI"), "pl")
+        self.assertEqual(_normalize_language("eng"), "en")
+        self.assertIsNone(_normalize_language("??"))
+        self.assertEqual(_require_language("english"), "en")
+        with self.assertRaises(OpenEnvError):
+            _require_language("de")
+
+        with patch("builtins.input", side_effect=["?", "2"]):
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                language = _select_language()
+        self.assertEqual(language, "en")
+        self.assertIn("Unknown choice", stdout.getvalue())
+
+    def test_resolve_openrouter_api_key_prefers_existing_value_and_rejects_empty_prompt(self) -> None:
+        with patch("openenv.bots.manager.get_project_env_value", return_value="existing"):
+            self.assertEqual(_resolve_openrouter_api_key(self.work_dir, "en"), "existing")
+
+        with patch("openenv.bots.manager.get_project_env_value", return_value=""):
+            with patch("openenv.bots.manager.getpass", return_value="   "):
+                with redirect_stdout(io.StringIO()):
+                    with self.assertRaises(OpenEnvError):
+                        _resolve_openrouter_api_key(self.work_dir, "en")
+
+    def test_ensure_bot_agent_documents_materialized_assigns_refs_and_writes_files(self) -> None:
+        bot = create_bot(
+            self.work_dir,
+            BotAnswers(
+                display_name="Materialize Bot",
+                role="Materialize docs",
+                skill_sources=[],
+                system_packages=[],
+                python_packages=[],
+                node_packages=[],
+                secret_names=[],
+                websites=[],
+                databases=[],
+                access_notes=[],
+            ),
+        )
+        manifest = bot.manifest
+        manifest.agent.agents_md_ref = None
+        manifest.agent.tools_md_ref = None
+        manifest.agent.memory_seed_ref = None
+        manifest.agent.tools_md = "# Tools\n"
+        manifest_path = bot.manifest_path
+        manifest_path.write_text(render_manifest(manifest), encoding="utf-8")
+        reloaded = load_bot(self.work_dir, bot.slug)
+        (reloaded.manifest_path.parent / "AGENTS.md").unlink(missing_ok=True)
+        (reloaded.manifest_path.parent / "TOOLS.md").unlink(missing_ok=True)
+        (reloaded.manifest_path.parent / "memory.md").unlink(missing_ok=True)
+
+        updated = _ensure_bot_agent_documents_materialized(reloaded)
+
+        self.assertEqual(updated.manifest.agent.agents_md_ref, "AGENTS.md")
+        self.assertEqual(updated.manifest.agent.tools_md_ref, "TOOLS.md")
+        self.assertEqual(updated.manifest.agent.memory_seed_ref, "memory.md")
+        self.assertTrue((updated.manifest_path.parent / "AGENTS.md").exists())
+        self.assertTrue((updated.manifest_path.parent / "TOOLS.md").exists())
+        self.assertTrue((updated.manifest_path.parent / "memory.md").exists())
+
+    def test_load_running_bot_reports_missing_compose_and_not_running(self) -> None:
+        bot = create_bot(
+            self.work_dir,
+            BotAnswers(
+                display_name="Runtime Bot",
+                role="Runtime",
+                skill_sources=[],
+                system_packages=[],
+                python_packages=[],
+                node_packages=[],
+                secret_names=[],
+                websites=[],
+                databases=[],
+                access_notes=[],
+            ),
+        )
+
+        with self.assertRaises(OpenEnvError) as missing_ctx:
+            _load_running_bot(self.work_dir, bot.slug)
+        self.assertIn("Compose file not found", str(missing_ctx.exception))
+
+        with patch(
+            "openenv.bots.manager.build_lockfile",
+            side_effect=self._build_stub_lockfile,
+        ):
+            generate_bot_artifacts(self.work_dir, bot.slug)
+
+        with patch("openenv.bots.manager.list_running_container_names", return_value=set()):
+            with self.assertRaises(OpenEnvError) as not_running_ctx:
+                _load_running_bot(self.work_dir, bot.slug)
+        self.assertIn("is not currently running", str(not_running_ctx.exception))
+
+    def test_snapshot_hydration_only_fills_missing_fields(self) -> None:
+        skill = SkillConfig(
+            name="catalog-skill",
+            description="Skill referenced from catalog source: abc",
+            content=None,
+            source=None,
+            assets={},
+        )
+        captured = CapturedSkill(
+            name="catalog-skill",
+            description="Hydrated description",
+            content="---\nname: catalog-skill\n---\n",
+            source="acme/catalog-skill",
+            assets={"note.md": "hello"},
+        )
+
+        changed = _hydrate_skill_from_snapshot(skill, captured)
+
+        self.assertTrue(changed)
+        self.assertEqual(skill.description, "Hydrated description")
+        self.assertEqual(skill.source, "acme/catalog-skill")
+        self.assertEqual(skill.assets, {"note.md": "hello"})
+
+    def test_unique_paths_and_render_tools_markdown_cover_optional_sections(self) -> None:
+        repeated = self.work_dir / "same.md"
+        unique = self.work_dir / "other.md"
+        self.assertEqual(_unique_paths([repeated, repeated, unique]), [repeated, unique])
+
+        markdown = _render_tools_markdown(
+            skill_sources=["acme/one"],
+            websites=["https://example.com"],
+            databases=["postgres://db"],
+            access_notes=["Read only"],
+        )
+        self.assertIn("## Skill Sources", markdown)
+        self.assertIn("## Websites", markdown)
+        self.assertIn("## Databases", markdown)
+        self.assertIn("## Access Notes", markdown)
+
+    def test_path_resolution_helpers_cover_preferred_legacy_and_missing_files(self) -> None:
+        bot_dir = self.work_dir / "bots" / "path-bot"
+        bot_dir.mkdir(parents=True, exist_ok=True)
+
+        self.assertIsNone(bot_manager._resolve_bot_manifest_path(bot_dir))
+        self.assertEqual(
+            bot_manager._preferred_lockfile_path(bot_dir),
+            bot_dir / bot_manager.LOCKFILE_FILENAME,
+        )
+
+        legacy_manifest = bot_dir / bot_manager.LEGACY_MANIFEST_FILENAME
+        legacy_manifest.write_text("legacy", encoding="utf-8")
+        self.assertEqual(bot_manager._resolve_bot_manifest_path(bot_dir), legacy_manifest)
+
+        preferred_manifest = bot_dir / bot_manager.MANIFEST_FILENAME
+        preferred_manifest.write_text("preferred", encoding="utf-8")
+        self.assertEqual(bot_manager._resolve_bot_manifest_path(bot_dir), preferred_manifest)
+
+        legacy_lockfile = bot_dir / bot_manager.LEGACY_LOCKFILE_FILENAME
+        legacy_lockfile.write_text("{}", encoding="utf-8")
+        self.assertEqual(bot_manager._preferred_lockfile_path(bot_dir), legacy_lockfile)
+
+        preferred_lockfile = bot_dir / bot_manager.LOCKFILE_FILENAME
+        preferred_lockfile.write_text("{}", encoding="utf-8")
+        self.assertEqual(bot_manager._preferred_lockfile_path(bot_dir), preferred_lockfile)
+
+    def test_discover_bots_skips_missing_and_invalid_manifests(self) -> None:
+        record = create_bot(
+            self.work_dir,
+            BotAnswers(
+                display_name="Legacy Bot",
+                role="Legacy manifest fallback",
+                skill_sources=[],
+                system_packages=[],
+                python_packages=[],
+                node_packages=[],
+                secret_names=[],
+                websites=[],
+                databases=[],
+                access_notes=[],
+            ),
+        )
+        legacy_manifest = record.manifest_path.parent / bot_manager.LEGACY_MANIFEST_FILENAME
+        record.manifest_path.rename(legacy_manifest)
+
+        missing_manifest_dir = self.work_dir / "bots" / "missing-manifest"
+        missing_manifest_dir.mkdir(parents=True, exist_ok=True)
+        broken_manifest_dir = self.work_dir / "bots" / "broken-manifest"
+        broken_manifest_dir.mkdir(parents=True, exist_ok=True)
+        (broken_manifest_dir / bot_manager.MANIFEST_FILENAME).write_text(
+            "schema_version = [",
+            encoding="utf-8",
+        )
+
+        discovered = discover_bots(self.work_dir)
+
+        self.assertEqual([bot.slug for bot in discovered], ["legacy-bot"])
+        self.assertEqual(discovered[0].manifest_path.name, bot_manager.LEGACY_MANIFEST_FILENAME)
+
+    def test_crud_helpers_cover_duplicate_missing_and_collision_paths(self) -> None:
+        create_bot(
+            self.work_dir,
+            BotAnswers(
+                display_name="First Bot",
+                role="First",
+                skill_sources=[],
+                system_packages=[],
+                python_packages=[],
+                node_packages=[],
+                secret_names=[],
+                websites=[],
+                databases=[],
+                access_notes=[],
+            ),
+        )
+        create_bot(
+            self.work_dir,
+            BotAnswers(
+                display_name="Second Bot",
+                role="Second",
+                skill_sources=[],
+                system_packages=[],
+                python_packages=[],
+                node_packages=[],
+                secret_names=[],
+                websites=[],
+                databases=[],
+                access_notes=[],
+            ),
+        )
+
+        with self.assertRaises(OpenEnvError):
+            create_bot(
+                self.work_dir,
+                BotAnswers(
+                    display_name="First Bot",
+                    role="Duplicate",
+                    skill_sources=[],
+                    system_packages=[],
+                    python_packages=[],
+                    node_packages=[],
+                    secret_names=[],
+                    websites=[],
+                    databases=[],
+                    access_notes=[],
+                ),
+            )
+        with self.assertRaises(OpenEnvError):
+            update_bot(
+                self.work_dir,
+                "missing-bot",
+                BotAnswers(
+                    display_name="Missing Bot",
+                    role="Missing",
+                    skill_sources=[],
+                    system_packages=[],
+                    python_packages=[],
+                    node_packages=[],
+                    secret_names=[],
+                    websites=[],
+                    databases=[],
+                    access_notes=[],
+                ),
+            )
+        with self.assertRaises(OpenEnvError):
+            update_bot(
+                self.work_dir,
+                "first-bot",
+                BotAnswers(
+                    display_name="Second Bot",
+                    role="Collision",
+                    skill_sources=[],
+                    system_packages=[],
+                    python_packages=[],
+                    node_packages=[],
+                    secret_names=[],
+                    websites=[],
+                    databases=[],
+                    access_notes=[],
+                ),
+            )
+        with self.assertRaises(OpenEnvError):
+            delete_bot(self.work_dir, "missing-bot")
+        with self.assertRaises(OpenEnvError):
+            load_bot(self.work_dir, "missing-bot")
+
+    def test_update_bot_same_slug_removes_legacy_manifest(self) -> None:
+        record = create_bot(
+            self.work_dir,
+            BotAnswers(
+                display_name="Same Bot",
+                role="Original role",
+                skill_sources=[],
+                system_packages=[],
+                python_packages=[],
+                node_packages=[],
+                secret_names=[],
+                websites=[],
+                databases=[],
+                access_notes=[],
+            ),
+        )
+        legacy_manifest = record.manifest_path.parent / bot_manager.LEGACY_MANIFEST_FILENAME
+        legacy_manifest.write_text(
+            record.manifest_path.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+
+        updated = update_bot(
+            self.work_dir,
+            record.slug,
+            BotAnswers(
+                display_name="Same Bot",
+                role="Updated role",
+                skill_sources=[],
+                system_packages=[],
+                python_packages=[],
+                node_packages=[],
+                secret_names=[],
+                websites=[],
+                databases=[],
+                access_notes=[],
+            ),
+        )
+
+        self.assertEqual(updated.slug, "same-bot")
+        self.assertFalse(legacy_manifest.exists())
+        self.assertEqual(updated.role, "Updated role")
+
+    def test_generate_bot_artifacts_handles_missing_sidecar_env(self) -> None:
+        record = create_bot(
+            self.work_dir,
+            BotAnswers(
+                display_name="Envless Bot",
+                role="Missing sidecar env",
+                skill_sources=[],
+                system_packages=[],
+                python_packages=[],
+                node_packages=[],
+                secret_names=[],
+                websites=[],
+                databases=[],
+                access_notes=[],
+            ),
+        )
+        (record.manifest_path.parent / ".env").unlink()
+
+        with patch(
+            "openenv.bots.manager.build_lockfile",
+            side_effect=self._build_stub_lockfile,
+        ):
+            artifacts = generate_bot_artifacts(self.work_dir, record.slug)
+
+        self.assertTrue(artifacts.env_path.exists())
+        self.assertIn("OPENCLAW_IMAGE=", artifacts.env_path.read_text(encoding="utf-8"))
+
+    def test_generate_all_bots_stack_rejects_empty_catalog(self) -> None:
+        with self.assertRaises(OpenEnvError) as ctx:
+            generate_all_bots_stack(self.work_dir)
+
+        self.assertIn("No managed bots were found.", str(ctx.exception))
+
+    def test_interactive_browse_helpers_cover_empty_and_failure_paths(self) -> None:
+        stdout = io.StringIO()
+        with patch("openenv.bots.manager.discover_running_bots", return_value=[]):
+            with redirect_stdout(stdout):
+                bot_manager._show_bots(self.work_dir, "en")
+                bot_manager._interactive_browse_bots(self.work_dir, "en")
+                bot_manager._interactive_browse_running_bots(self.work_dir, "en")
+
+        self.assertIn("No registered bots.", stdout.getvalue())
+        self.assertIn("No running bots", stdout.getvalue())
+
+        record = create_bot(
+            self.work_dir,
+            BotAnswers(
+                display_name="Browse Bot",
+                role="Browse actions",
+                skill_sources=[],
+                system_packages=[],
+                python_packages=[],
+                node_packages=[],
+                secret_names=[],
+                websites=[],
+                databases=[],
+                access_notes=[],
+            ),
+        )
+        stdout = io.StringIO()
+        with patch("builtins.input", return_value="a"):
+            with patch(
+                "openenv.bots.manager.generate_all_bots_stack",
+                side_effect=OpenEnvError("compose failed"),
+            ):
+                with redirect_stdout(stdout):
+                    bot_manager._interactive_browse_bots(self.work_dir, "en")
+        self.assertIn("Failed to generate the shared stack", stdout.getvalue())
+
+        stdout = io.StringIO()
+        with patch("builtins.input", side_effect=["", "x"]):
+            with redirect_stdout(stdout):
+                bot_manager._interactive_browse_bots(self.work_dir, "en")
+                bot_manager._interactive_browse_bots(self.work_dir, "en")
+        self.assertIn("invalid", stdout.getvalue().lower())
+
+        running_bot = bot_manager.RunningBotRecord(
+            bot=record,
+            compose_path=record.manifest_path.parent / "docker-compose-browse-bot.yml",
+            container_name="browse-bot-openclaw-gateway",
+        )
+        stdout = io.StringIO()
+        with patch(
+            "openenv.bots.manager.discover_running_bots",
+            return_value=[running_bot],
+        ):
+            with patch("builtins.input", side_effect=["", "x"]):
+                with redirect_stdout(stdout):
+                    bot_manager._interactive_browse_running_bots(self.work_dir, "en")
+                    bot_manager._interactive_browse_running_bots(self.work_dir, "en")
+        self.assertIn("invalid", stdout.getvalue().lower())
+
+    def test_interactive_action_helpers_cover_error_success_back_and_unknown_paths(self) -> None:
+        record = create_bot(
+            self.work_dir,
+            BotAnswers(
+                display_name="Action Bot",
+                role="Action flows",
+                skill_sources=[],
+                system_packages=[],
+                python_packages=[],
+                node_packages=[],
+                secret_names=[],
+                websites=[],
+                databases=[],
+                access_notes=[],
+            ),
+        )
+        running_bot = bot_manager.RunningBotRecord(
+            bot=record,
+            compose_path=record.manifest_path.parent / "docker-compose-action-bot.yml",
+            container_name="action-bot-openclaw-gateway",
+        )
+
+        stdout = io.StringIO()
+        with patch("builtins.input", return_value="1"):
+            with patch(
+                "openenv.bots.manager.generate_bot_artifacts",
+                side_effect=OpenEnvError("build failed"),
+            ):
+                with redirect_stdout(stdout):
+                    bot_manager._interactive_bot_actions(self.work_dir, record, "en")
+        self.assertIn("Failed to generate artifacts", stdout.getvalue())
+
+        stdout = io.StringIO()
+        with patch("builtins.input", side_effect=["3", "9"]):
+            with redirect_stdout(stdout):
+                bot_manager._interactive_bot_actions(self.work_dir, record, "en")
+                bot_manager._interactive_bot_actions(self.work_dir, record, "en")
+        self.assertIn("Unknown option", stdout.getvalue())
+
+        stdout = io.StringIO()
+        with patch("builtins.input", return_value="1"):
+            with patch(
+                "openenv.bots.manager.preview_running_bot_logs",
+                side_effect=OpenEnvError("logs failed"),
+            ):
+                with redirect_stdout(stdout):
+                    bot_manager._interactive_running_bot_actions(
+                        self.work_dir,
+                        running_bot,
+                        "en",
+                    )
+        self.assertIn("Failed to fetch logs", stdout.getvalue())
+
+        snapshot_result = bot_manager.SkillSnapshotResult(
+            bot=record,
+            manifest_path=record.manifest_path,
+            lock_path=record.manifest_path.parent / bot_manager.LOCKFILE_FILENAME,
+            added_skill_names=["new-skill"],
+            hydrated_skill_names=["hydrated-skill"],
+        )
+        stdout = io.StringIO()
+        with patch("builtins.input", side_effect=["2", "3", "9"]):
+            with patch(
+                "openenv.bots.manager.create_skill_snapshot",
+                side_effect=[
+                    snapshot_result,
+                    snapshot_result,
+                    snapshot_result,
+                ],
+            ):
+                with redirect_stdout(stdout):
+                    bot_manager._interactive_running_bot_actions(
+                        self.work_dir,
+                        running_bot,
+                        "en",
+                    )
+                    bot_manager._interactive_running_bot_actions(
+                        self.work_dir,
+                        running_bot,
+                        "en",
+                    )
+                    bot_manager._interactive_running_bot_actions(
+                        self.work_dir,
+                        running_bot,
+                        "en",
+                    )
+        output = stdout.getvalue()
+        self.assertIn("Updated manifest", output)
+        self.assertIn("Updated lockfile", output)
+        self.assertIn("Added skill: new-skill", output)
+        self.assertIn("Hydrated skill from container: hydrated-skill", output)
+        self.assertIn("Unknown option", output)
+
+    def test_interactive_crud_helpers_cover_failure_and_selection_shortcuts(self) -> None:
+        stdout = io.StringIO()
+        with patch(
+            "builtins.input",
+            side_effect=["Fail Bot", "Role", "", "", "", "", "", "", "", ""],
+        ):
+            with patch(
+                "openenv.bots.manager.create_bot",
+                side_effect=OpenEnvError("create failed"),
+            ):
+                with redirect_stdout(stdout):
+                    bot_manager._interactive_add_bot(self.work_dir, "en")
+        self.assertIn("Failed to create bot", stdout.getvalue())
+
+        record = create_bot(
+            self.work_dir,
+            BotAnswers(
+                display_name="Edit Bot",
+                role="Edit flow",
+                skill_sources=[],
+                system_packages=[],
+                python_packages=[],
+                node_packages=[],
+                secret_names=[],
+                websites=[],
+                databases=[],
+                access_notes=[],
+            ),
+        )
+        stdout = io.StringIO()
+        with patch("builtins.input", return_value="x"):
+            with redirect_stdout(stdout):
+                bot_manager._interactive_edit_bot(self.work_dir, "en")
+        self.assertIn("invalid", stdout.getvalue().lower())
+
+        stdout = io.StringIO()
+        with patch(
+            "builtins.input",
+            side_effect=["1", "", "", "", "", "", "", "", "", "", ""],
+        ):
+            with patch(
+                "openenv.bots.manager.update_bot",
+                side_effect=OpenEnvError("update failed"),
+            ):
+                with redirect_stdout(stdout):
+                    bot_manager._interactive_edit_bot(self.work_dir, "en")
+        self.assertIn("Failed to update bot", stdout.getvalue())
+
+        stdout = io.StringIO()
+        with patch("builtins.input", return_value="x"):
+            with redirect_stdout(stdout):
+                bot_manager._interactive_delete_bot(self.work_dir, "en")
+        self.assertIn("invalid", stdout.getvalue().lower())
+
+        stdout = io.StringIO()
+        with patch("builtins.input", side_effect=["1", "y"]):
+            with patch(
+                "openenv.bots.manager.delete_bot",
+                side_effect=OpenEnvError("delete failed"),
+            ):
+                with redirect_stdout(stdout):
+                    bot_manager._interactive_delete_bot(self.work_dir, "en")
+        self.assertIn("Failed to delete bot", stdout.getvalue())
+
+        self.assertTrue((self.work_dir / "bots" / record.slug).exists())
+
+    def test_document_and_skill_helpers_cover_optional_and_deduplicated_paths(self) -> None:
+        record = create_bot(
+            self.work_dir,
+            BotAnswers(
+                display_name="Helper Bot",
+                role="Helper flows",
+                skill_sources=["acme/catalog-skill"],
+                system_packages=[],
+                python_packages=[],
+                node_packages=[],
+                secret_names=[],
+                websites=[],
+                databases=[],
+                access_notes=[],
+            ),
+        )
+        manifest = record.manifest
+        manifest.agent.identity_md = None
+        manifest.agent.identity_md_ref = None
+        manifest.agent.tools_md = None
+        manifest.agent.tools_md_ref = None
+        manifest.agent.memory_seed = []
+        manifest.agent.memory_seed_ref = None
+
+        bot_dir = record.manifest_path.parent
+        bot_manager._write_agent_docs(bot_dir, manifest.agent)
+        bot_manager._write_agent_doc(bot_dir, None, "ignored")
+        documents = bot_manager._bot_documents(manifest)
+
+        self.assertEqual(set(documents), {"AGENTS.md", "SOUL.md", "USER.md", "memory.md"})
+        self.assertEqual(bot_manager._memory_seed_text([]), "")
+        self.assertEqual(
+            bot_manager._unique_preserving_order(["a", "b", "a", "c", "b"]),
+            ["a", "b", "c"],
+        )
+
+        manifest.skills = [
+            SkillConfig(
+                name="catalog-skill",
+                description="Skill referenced from catalog source: acme/catalog-skill",
+                content=None,
+                source=None,
+                assets={},
+            )
+        ]
+        added, hydrated = bot_manager._apply_skill_snapshot(
+            manifest,
+            [
+                CapturedSkill(
+                    name="catalog-skill",
+                    description="Hydrated description",
+                    content="---\nname: catalog-skill\n---\n",
+                    source="acme/catalog-skill",
+                    assets={"note.md": "hello"},
+                ),
+                CapturedSkill(
+                    name="new-runtime-skill",
+                    description="New runtime skill",
+                    content="---\nname: new-runtime-skill\n---\n",
+                    source="acme/new-runtime-skill",
+                    assets={},
+                ),
+            ],
+        )
+        self.assertEqual(added, ["new-runtime-skill"])
+        self.assertEqual(hydrated, ["catalog-skill"])
+
     def _build_stub_lockfile(self, manifest, raw_manifest_text):
         return build_lockfile_for_test(
             manifest,
@@ -668,3 +1509,4 @@ class BotManagerTests(unittest.TestCase):
                 "resolved_reference": PINNED_IMAGE,
             },
         )
+

@@ -1,4 +1,4 @@
-"""Domain models for Open-env manifests and locks."""
+"""Domain models for OpenClawenv manifests and locks."""
 
 from __future__ import annotations
 
@@ -299,7 +299,7 @@ class OpenClawConfig:
 
 @dataclass(slots=True)
 class Manifest:
-    """Fully parsed Open-env manifest with all defaults, refs, and skills materialized."""
+    """Fully parsed OpenClawenv manifest with all defaults, refs, and skills materialized."""
 
     schema_version: int
     project: ProjectConfig

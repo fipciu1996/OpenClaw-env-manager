@@ -279,7 +279,7 @@ def _openrouter_chat_completion(
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "X-Title": "Open-env",
+            "X-Title": "OpenClawenv",
         },
         method="POST",
     )

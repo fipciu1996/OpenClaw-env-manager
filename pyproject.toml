@@ -11,7 +11,7 @@ requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "Codex" }]
 dependencies = ["loguru>=0.7,<1.0"]
-keywords = ["agents", "docker", "openclaw", "openenv"]
+keywords = ["agents", "docker", "openclaw", "openclawenv"]
 classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",

@@ -8,7 +8,7 @@ nav:
   - Overview: index.md
   - Getting Started: getting-started.md
   - Concepts: concepts.md
-  - openenv.toml Structure: openenv-toml.md
+  - openclawenv.toml Structure: openclawenv-toml.md
   - Changelog: changelog.md
   - API:
       - Overview: api/index.md

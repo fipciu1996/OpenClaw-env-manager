@@ -1,4 +1,4 @@
-"""Sample manifest used by `openenv init`."""
+"""Sample manifest used by `clawopenenv init`."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ SAMPLE_MANIFEST = dedent(
     [project]
     name = "research-agent"
     version = "0.1.0"
-    description = "Example OpenClaw environment managed by Open-env"
+    description = "Example OpenClaw environment managed by OpenClawenv"
     runtime = "openclaw"
 
     [runtime]
@@ -21,7 +21,7 @@ SAMPLE_MANIFEST = dedent(
     system_packages = ["git", "curl", "chromium"]
     python_packages = ["requests==2.32.3", "rich==13.9.4"]
     node_packages = ["typescript@5.8.3"]
-    env = { PYTHONUNBUFFERED = "1", OPENENV_PROJECT = "research-agent" }
+    env = { PYTHONUNBUFFERED = "1", OPENCLAWENV_PROJECT = "research-agent" }
     user = "agent"
     workdir = "/workspace"
 
@@ -51,7 +51,7 @@ SAMPLE_MANIFEST = dedent(
     identity_md = \"\"\"
     # Identity
 
-    You are the research agent for the Open-env workspace.
+    You are the research agent for the OpenClawenv workspace.
     \"\"\"
     tools_md = \"\"\"
     # Tools

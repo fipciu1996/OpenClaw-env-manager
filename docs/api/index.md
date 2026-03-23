@@ -1,6 +1,6 @@
 # API Reference
 
-This section is generated from the Python package under `src/openenv/`.
+This section is generated from the internal Python package.
 
 Use it when you want to:
 

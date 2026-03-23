@@ -1,4 +1,4 @@
-"""Skill scanner integration for Open-env."""
+"""Skill scanner integration for OpenClawenv."""
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ def run_skill_scanner(
     if extra_args and extra_args[0] == "--":
         extra_args = extra_args[1:]
 
-    scan_root = manifest_root / f"openenv-scan-tmp-{uuid.uuid4().hex}"
+    scan_root = manifest_root / f"openclawenv-scan-tmp-{uuid.uuid4().hex}"
     scan_root.mkdir(parents=True, exist_ok=False)
     try:
         skills_root = materialize_skills(manifest, scan_root / "skills")
@@ -73,7 +73,7 @@ def run_skill_scanner(
             ) from exc
 
         if keep_artifacts:
-            destination = manifest_root / ".openenv-scan"
+            destination = manifest_root / ".openclawenv-scan"
             if destination.exists():
                 shutil.rmtree(destination, ignore_errors=True)
             shutil.copytree(scan_root, destination)

@@ -12,3 +12,10 @@ class MainModuleTests(unittest.TestCase):
                 runpy.run_module("clawopenenv.__main__", run_name="__main__")
 
         self.assertEqual(ctx.exception.code, 7)
+
+    def test_legacy_openenv_main_module_exits_with_cli_status_code(self) -> None:
+        with patch("openenv.cli.main", return_value=3):
+            with self.assertRaises(SystemExit) as ctx:
+                runpy.run_module("openenv.__main__", run_name="__main__")
+
+        self.assertEqual(ctx.exception.code, 3)

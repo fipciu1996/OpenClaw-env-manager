@@ -1,4 +1,4 @@
-"""Command line interface for Open-env."""
+"""Command line interface for OpenClawenv."""
 
 from __future__ import annotations
 
@@ -38,28 +38,35 @@ from openenv.manifests.lockfile import (
 from openenv.templates.sample import SAMPLE_MANIFEST
 
 
+DEFAULT_MANIFEST_FILENAME = "openclawenv.toml"
+LEGACY_MANIFEST_FILENAME = "openenv.toml"
+DEFAULT_LOCKFILE_FILENAME = "openclawenv.lock"
+LEGACY_LOCKFILE_FILENAME = "openenv.lock"
+DEFAULT_SCAN_ARTIFACTS_DIRNAME = ".openclawenv-scan"
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Create the CLI parser."""
-    parser = argparse.ArgumentParser(prog="clawopenenv", description="Open-env CLI")
+    parser = argparse.ArgumentParser(prog="clawopenenv", description="OpenClawenv CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    init_parser = subparsers.add_parser("init", help="Create a starter openenv.toml")
-    init_parser.add_argument("--path", default="openenv.toml", help="Manifest output path")
+    init_parser = subparsers.add_parser("init", help=f"Create a starter {DEFAULT_MANIFEST_FILENAME}")
+    init_parser.add_argument("--path", default=DEFAULT_MANIFEST_FILENAME, help="Manifest output path")
     init_parser.add_argument(
         "--force",
         action="store_true",
         help="Overwrite an existing manifest file",
     )
 
-    validate_parser = subparsers.add_parser("validate", help="Validate openenv.toml")
-    validate_parser.add_argument("--path", default="openenv.toml", help="Manifest path")
+    validate_parser = subparsers.add_parser("validate", help=f"Validate {DEFAULT_MANIFEST_FILENAME}")
+    validate_parser.add_argument("--path", default=DEFAULT_MANIFEST_FILENAME, help="Manifest path")
 
-    lock_parser = subparsers.add_parser("lock", help="Generate openenv.lock")
-    lock_parser.add_argument("--path", default="openenv.toml", help="Manifest path")
-    lock_parser.add_argument("--output", default="openenv.lock", help="Lockfile output path")
+    lock_parser = subparsers.add_parser("lock", help=f"Generate {DEFAULT_LOCKFILE_FILENAME}")
+    lock_parser.add_argument("--path", default=DEFAULT_MANIFEST_FILENAME, help="Manifest path")
+    lock_parser.add_argument("--output", default=DEFAULT_LOCKFILE_FILENAME, help="Lockfile output path")
 
     scan_parser = subparsers.add_parser("scan", help="Run skill-scanner against inline skills")
-    scan_parser.add_argument("--path", default="openenv.toml", help="Manifest path")
+    scan_parser.add_argument("--path", default=DEFAULT_MANIFEST_FILENAME, help="Manifest path")
     scan_parser.add_argument(
         "--scanner-bin",
         default="skill-scanner",
@@ -68,7 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
     scan_parser.add_argument(
         "--keep-artifacts",
         action="store_true",
-        help="Keep the materialized skill directory in .openenv-scan",
+        help=f"Keep the materialized skill directory in {DEFAULT_SCAN_ARTIFACTS_DIRNAME}",
     )
     scan_parser.add_argument(
         "scanner_args",
@@ -82,21 +89,21 @@ def build_parser() -> argparse.ArgumentParser:
         "dockerfile",
         help="Render the deterministic Dockerfile",
     )
-    dockerfile_parser.add_argument("--path", default="openenv.toml", help="Manifest path")
-    dockerfile_parser.add_argument("--lock", default="openenv.lock", help="Lockfile path")
+    dockerfile_parser.add_argument("--path", default=DEFAULT_MANIFEST_FILENAME, help="Manifest path")
+    dockerfile_parser.add_argument("--lock", default=DEFAULT_LOCKFILE_FILENAME, help="Lockfile path")
     dockerfile_parser.add_argument("--output", help="Optional Dockerfile output path")
     compose_parser = export_subparsers.add_parser(
         "compose",
         help="Render the docker-compose file for the bot image",
     )
-    compose_parser.add_argument("--path", default="openenv.toml", help="Manifest path")
-    compose_parser.add_argument("--lock", default="openenv.lock", help="Lockfile path")
+    compose_parser.add_argument("--path", default=DEFAULT_MANIFEST_FILENAME, help="Manifest path")
+    compose_parser.add_argument("--lock", default=DEFAULT_LOCKFILE_FILENAME, help="Lockfile path")
     compose_parser.add_argument("--tag", help="Docker image tag to reference")
     compose_parser.add_argument("--output", help="Optional compose output path")
 
     build_parser_cmd = subparsers.add_parser("build", help="Build the Docker image")
-    build_parser_cmd.add_argument("--path", default="openenv.toml", help="Manifest path")
-    build_parser_cmd.add_argument("--lock", default="openenv.lock", help="Lockfile path")
+    build_parser_cmd.add_argument("--path", default=DEFAULT_MANIFEST_FILENAME, help="Manifest path")
+    build_parser_cmd.add_argument("--lock", default=DEFAULT_LOCKFILE_FILENAME, help="Lockfile path")
     build_parser_cmd.add_argument("--tag", help="Docker image tag")
     build_parser_cmd.add_argument(
         "--scan-format",
@@ -162,7 +169,7 @@ def _handle_init(args: argparse.Namespace) -> int:
 
 def _handle_validate(args: argparse.Namespace) -> int:
     """Validate a manifest and print a short summary for the operator."""
-    manifest, _ = load_manifest(args.path)
+    manifest, _ = load_manifest(_resolve_manifest_path_argument(args.path))
     logger.info(
         "Manifest valid: "
         f"{manifest.project.name} {manifest.project.version} "
@@ -174,7 +181,8 @@ def _handle_validate(args: argparse.Namespace) -> int:
 
 def _handle_lock(args: argparse.Namespace) -> int:
     """Resolve the manifest into a deterministic lockfile and write it to disk."""
-    manifest, raw_manifest_text = load_manifest(args.path)
+    manifest_path = _resolve_manifest_path_argument(args.path)
+    manifest, raw_manifest_text = load_manifest(manifest_path)
     lockfile = build_lockfile(manifest, raw_manifest_text)
     write_lockfile(args.output, lockfile)
     logger.info("Wrote lockfile to {}", args.output)
@@ -183,9 +191,10 @@ def _handle_lock(args: argparse.Namespace) -> int:
 
 def _handle_scan(args: argparse.Namespace) -> int:
     """Materialize skills from the manifest and run the external skill scanner."""
-    manifest, _ = load_manifest(args.path)
+    manifest_path = _resolve_manifest_path_argument(args.path)
+    manifest, _ = load_manifest(manifest_path)
     scan_dir = run_skill_scanner(
-        args.path,
+        manifest_path,
         manifest,
         scanner_bin=args.scanner_bin,
         scanner_args=args.scanner_args,
@@ -213,23 +222,24 @@ def _handle_export_dockerfile(args: argparse.Namespace) -> int:
 
 def _handle_build(args: argparse.Namespace) -> int:
     """Build the Docker image and emit the compose bundle beside the manifest."""
-    manifest, _ = load_manifest(args.path)
+    manifest_path = _resolve_manifest_path_argument(args.path)
+    manifest, _ = load_manifest(manifest_path)
     dockerfile_text = _render_locked_dockerfile(
-        manifest_path=args.path,
-        lock_path=args.lock,
+        manifest_path=manifest_path,
+        lock_path=_resolve_lock_path_argument(args.lock, manifest_path=manifest_path),
     )
     tag = args.tag or default_image_tag(manifest.project.name, manifest.project.version)
     build_image_with_args(
         dockerfile_text,
         tag,
         build_args={
-            "OPENENV_SKILL_SCAN_FORMAT": args.scan_format,
-            "OPENENV_SKILL_SCAN_POLICY": args.scan_policy,
-            "OPENENV_SKILL_SCAN_FAIL_ON_SEVERITY": args.scan_fail_on_severity,
+            "OPENCLAWENV_SKILL_SCAN_FORMAT": args.scan_format,
+            "OPENCLAWENV_SKILL_SCAN_POLICY": args.scan_policy,
+            "OPENCLAWENV_SKILL_SCAN_FAIL_ON_SEVERITY": args.scan_fail_on_severity,
         },
     )
     dockerfile_path, compose_path, env_path = _write_compose_bundle(
-        manifest_path=args.path,
+        manifest_path=manifest_path,
         manifest=manifest,
         image_tag=tag,
         dockerfile_text=dockerfile_text,
@@ -243,16 +253,18 @@ def _handle_build(args: argparse.Namespace) -> int:
 
 def _handle_export_compose(args: argparse.Namespace) -> int:
     """Render the compose/env bundle that references a previously locked image build."""
-    manifest, _ = load_manifest(args.path)
-    _load_and_verify_lockfile(args.path, args.lock)
+    manifest_path = _resolve_manifest_path_argument(args.path)
+    lock_path = _resolve_lock_path_argument(args.lock, manifest_path=manifest_path)
+    manifest, _ = load_manifest(manifest_path)
+    _load_and_verify_lockfile(manifest_path, lock_path)
     tag = args.tag or default_image_tag(manifest.project.name, manifest.project.version)
     compose_path = Path(args.output) if args.output else None
     dockerfile_text = _render_locked_dockerfile(
-        manifest_path=args.path,
-        lock_path=args.lock,
+        manifest_path=manifest_path,
+        lock_path=lock_path,
     )
     dockerfile_path, compose_path, env_path = _write_compose_bundle(
-        manifest_path=args.path,
+        manifest_path=manifest_path,
         manifest=manifest,
         image_tag=tag,
         compose_path=compose_path,
@@ -282,7 +294,10 @@ def _configure_logging() -> None:
 
 def _render_locked_dockerfile(*, manifest_path: str, lock_path: str) -> str:
     """Load the manifest and verified lockfile, then render the effective Dockerfile."""
-    manifest, lockfile, raw_manifest_text = _load_and_verify_lockfile(manifest_path, lock_path)
+    manifest, lockfile, raw_manifest_text = _load_and_verify_lockfile(
+        _resolve_manifest_path_argument(manifest_path),
+        _resolve_lock_path_argument(lock_path, manifest_path=manifest_path),
+    )
     raw_lock_text = dump_lockfile(lockfile)
     return render_dockerfile(
         manifest,
@@ -297,8 +312,9 @@ def _load_and_verify_lockfile(
     lock_path: str,
 ) -> tuple[Manifest, Lockfile, str]:
     """Load a manifest/lockfile pair and ensure the lock matches the current manifest."""
-    manifest, raw_manifest_text = load_manifest(manifest_path)
-    lockfile = load_lockfile(lock_path)
+    resolved_manifest_path = _resolve_manifest_path_argument(manifest_path)
+    manifest, raw_manifest_text = load_manifest(resolved_manifest_path)
+    lockfile = load_lockfile(_resolve_lock_path_argument(lock_path, manifest_path=resolved_manifest_path))
     expected_hash = build_lockfile(
         manifest,
         raw_manifest_text,
@@ -317,6 +333,39 @@ def _load_and_verify_lockfile(
 def _default_compose_path(manifest_path: str, agent_name: str) -> Path:
     """Return the default compose destination located next to the manifest."""
     return Path(manifest_path).resolve().parent / default_compose_filename(agent_name)
+
+
+def _resolve_manifest_path_argument(path: str | Path) -> str:
+    """Resolve the manifest path, falling back to the legacy filename when present."""
+    candidate = Path(path)
+    if candidate.name == DEFAULT_MANIFEST_FILENAME and not candidate.exists():
+        legacy = candidate.with_name(LEGACY_MANIFEST_FILENAME)
+        if legacy.exists():
+            return str(legacy)
+    return str(candidate)
+
+
+def _resolve_lock_path_argument(lock_path: str | Path, *, manifest_path: str | Path | None = None) -> str:
+    """Resolve the lockfile path, falling back to legacy or sibling lockfile names."""
+    candidate = Path(lock_path)
+    search_paths: list[Path] = []
+    if candidate.name == DEFAULT_LOCKFILE_FILENAME:
+        search_paths.append(candidate)
+        search_paths.append(candidate.with_name(LEGACY_LOCKFILE_FILENAME))
+    else:
+        search_paths.append(candidate)
+    if manifest_path is not None:
+        manifest_candidate = Path(manifest_path)
+        search_paths.extend(
+            [
+                manifest_candidate.with_name(DEFAULT_LOCKFILE_FILENAME),
+                manifest_candidate.with_name(LEGACY_LOCKFILE_FILENAME),
+            ]
+        )
+    for path in search_paths:
+        if path.exists():
+            return str(path)
+    return str(candidate)
 
 
 def _write_compose_bundle(

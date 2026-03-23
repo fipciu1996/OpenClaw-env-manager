@@ -1,8 +1,8 @@
-"""Custom exceptions for Open-env."""
+"""Custom exceptions for OpenClawenv."""
 
 
 class OpenEnvError(Exception):
-    """Base exception for Open-env failures."""
+    """Base exception for OpenClawenv failures."""
 
 
 class ValidationError(OpenEnvError):

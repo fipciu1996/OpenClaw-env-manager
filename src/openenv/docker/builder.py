@@ -12,7 +12,7 @@ from openenv.core.utils import slugify_name
 
 def default_image_tag(project_name: str, version: str) -> str:
     """Compute the default docker tag for a project."""
-    return f"openenv/{slugify_name(project_name)}:{version}"
+    return f"openclawenv/{slugify_name(project_name)}:{version}"
 
 
 def build_image(dockerfile_text: str, tag: str) -> None:
@@ -27,7 +27,7 @@ def build_image_with_args(
     build_args: dict[str, str] | None,
 ) -> None:
     """Build a Docker image from a rendered Dockerfile with optional build args."""
-    with tempfile.TemporaryDirectory(prefix="openenv-build-") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="openclawenv-build-") as temp_dir:
         dockerfile_path = Path(temp_dir) / "Dockerfile"
         dockerfile_path.write_text(dockerfile_text, encoding="utf-8")
         command = [

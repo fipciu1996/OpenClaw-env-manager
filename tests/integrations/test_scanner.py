@@ -19,7 +19,7 @@ TEMP_ROOT.mkdir(exist_ok=True)
 
 class ScannerTests(unittest.TestCase):
     def test_materialize_skills_writes_skill_tree(self) -> None:
-        manifest, _ = load_manifest(FIXTURES / "example.openenv.toml")
+        manifest, _ = load_manifest(FIXTURES / "example.openclawenv.toml")
         target = TEMP_ROOT / "scanner-materialize"
         if target.exists():
             shutil.rmtree(target, ignore_errors=True)
@@ -39,7 +39,7 @@ class ScannerTests(unittest.TestCase):
         shutil.rmtree(target, ignore_errors=True)
 
     def test_materialize_skills_rewrites_home_based_openclaw_paths(self) -> None:
-        manifest, _ = load_manifest(FIXTURES / "example.openenv.toml")
+        manifest, _ = load_manifest(FIXTURES / "example.openclawenv.toml")
         incident_brief = next(
             skill for skill in manifest.skills if skill.name == "incident-brief"
         )
@@ -94,8 +94,8 @@ class ScannerTests(unittest.TestCase):
         if work_dir.exists():
             shutil.rmtree(work_dir, ignore_errors=True)
         work_dir.mkdir(parents=True, exist_ok=True)
-        manifest_path = work_dir / "openenv.toml"
-        shutil.copyfile(FIXTURES / "example.openenv.toml", manifest_path)
+        manifest_path = work_dir / "openclawenv.toml"
+        shutil.copyfile(FIXTURES / "example.openclawenv.toml", manifest_path)
         manifest, _ = load_manifest(manifest_path)
 
         with patch("openenv.integrations.scanner.subprocess.run") as subprocess_run:
@@ -124,8 +124,8 @@ class ScannerTests(unittest.TestCase):
         if work_dir.exists():
             shutil.rmtree(work_dir, ignore_errors=True)
         work_dir.mkdir(parents=True, exist_ok=True)
-        manifest_path = work_dir / "openenv.toml"
-        shutil.copyfile(FIXTURES / "example.openenv.toml", manifest_path)
+        manifest_path = work_dir / "openclawenv.toml"
+        shutil.copyfile(FIXTURES / "example.openclawenv.toml", manifest_path)
         manifest, _ = load_manifest(manifest_path)
 
         with patch("openenv.integrations.scanner.subprocess.run") as subprocess_run:
@@ -147,8 +147,8 @@ class ScannerTests(unittest.TestCase):
         if work_dir.exists():
             shutil.rmtree(work_dir, ignore_errors=True)
         work_dir.mkdir(parents=True, exist_ok=True)
-        manifest_path = work_dir / "openenv.toml"
-        shutil.copyfile(FIXTURES / "example.openenv.toml", manifest_path)
+        manifest_path = work_dir / "openclawenv.toml"
+        shutil.copyfile(FIXTURES / "example.openclawenv.toml", manifest_path)
         manifest, _ = load_manifest(manifest_path)
 
         with patch("openenv.integrations.scanner.subprocess.run", side_effect=OSError("missing")):
@@ -156,7 +156,7 @@ class ScannerTests(unittest.TestCase):
                 run_skill_scanner(manifest_path, manifest)
 
         self.assertIn("skill-scanner is not available on PATH", str(ctx.exception))
-        self.assertFalse((work_dir / ".openenv-scan").exists())
+        self.assertFalse((work_dir / ".openclawenv-scan").exists())
 
         shutil.rmtree(work_dir, ignore_errors=True)
 
@@ -165,8 +165,8 @@ class ScannerTests(unittest.TestCase):
         if work_dir.exists():
             shutil.rmtree(work_dir, ignore_errors=True)
         work_dir.mkdir(parents=True, exist_ok=True)
-        manifest_path = work_dir / "openenv.toml"
-        shutil.copyfile(FIXTURES / "example.openenv.toml", manifest_path)
+        manifest_path = work_dir / "openclawenv.toml"
+        shutil.copyfile(FIXTURES / "example.openclawenv.toml", manifest_path)
         manifest, _ = load_manifest(manifest_path)
 
         with patch(
@@ -183,3 +183,4 @@ class ScannerTests(unittest.TestCase):
         self.assertIn("skill-scanner failed with exit code 5", str(ctx.exception))
 
         shutil.rmtree(work_dir, ignore_errors=True)
+

@@ -1,4 +1,4 @@
-"""Dockerfile generation for Open-env."""
+"""Dockerfile generation for OpenClawenv."""
 
 from __future__ import annotations
 
@@ -44,9 +44,10 @@ def render_dockerfile(
         f"FROM {OPENCLAW_GATEWAY_RUNTIME_IMAGE}",
         f'LABEL org.opencontainers.image.title="{_escape_label(manifest.project.name)}"',
         f'LABEL org.opencontainers.image.version="{_escape_label(manifest.project.version)}"',
-        f'LABEL io.openenv.manifest-hash="{lockfile.manifest_hash}"',
-        f'LABEL io.openenv.sandbox-image="{_escape_label(sandbox_reference)}"',
+        f'LABEL io.openclawenv.manifest-hash="{lockfile.manifest_hash}"',
+        f'LABEL io.openclawenv.sandbox-image="{_escape_label(sandbox_reference)}"',
         "ENV PYTHONDONTWRITEBYTECODE=1",
+        "USER root",
     ]
     for key, value in sorted(manifest.runtime.env.items()):
         lines.append(f"ENV {key}={json.dumps(value)}")
@@ -72,7 +73,7 @@ def render_dockerfile(
         )
         lines.append("RUN agent-browser install")
     lines.extend(_state_link_lines(manifest))
-    lines.append("RUN mkdir -p /opt/openenv")
+    lines.append("RUN mkdir -p /opt/openclawenv")
     lines.append(
         'RUN ["python", "-c", '
         f'{json.dumps(_payload_writer_script(payload_b64))}'
@@ -81,6 +82,7 @@ def render_dockerfile(
     lines.extend(_freeride_install_lines(manifest))
     lines.extend(_skill_scan_lines(manifest))
     lines.extend(_runtime_permission_lines(manifest))
+    lines.append(f"USER {DEFAULT_OPENCLAW_RUNTIME_USER}")
     return "\n".join(lines) + "\n"
 
 
@@ -97,8 +99,8 @@ def _render_payload(
         stable_json_dumps(manifest.openclaw.to_openclaw_json(base_reference), indent=2)
         + "\n"
     )
-    files[str(PurePosixPath("/opt/openenv") / "openenv.toml")] = raw_manifest_text
-    files[str(PurePosixPath("/opt/openenv") / "openenv.lock")] = raw_lock_text
+    files[str(PurePosixPath("/opt/openclawenv") / "openclawenv.toml")] = raw_manifest_text
+    files[str(PurePosixPath("/opt/openclawenv") / "openclawenv.lock")] = raw_lock_text
     files = dict(sorted(files.items()))
     return {"directories": _directories_for(files), "files": files}
 
@@ -194,9 +196,9 @@ def _skill_scan_lines(manifest: Manifest) -> list[str]:
         return []
     skills_root = PurePosixPath(manifest.openclaw.workspace) / "skills"
     return [
-        f"ARG OPENENV_SKILL_SCAN_FORMAT={DEFAULT_SKILL_SCAN_FORMAT}",
-        f"ARG OPENENV_SKILL_SCAN_POLICY={DEFAULT_SKILL_SCAN_POLICY}",
-        "ARG OPENENV_SKILL_SCAN_FAIL_ON_SEVERITY="
+        f"ARG OPENCLAWENV_SKILL_SCAN_FORMAT={DEFAULT_SKILL_SCAN_FORMAT}",
+        f"ARG OPENCLAWENV_SKILL_SCAN_POLICY={DEFAULT_SKILL_SCAN_POLICY}",
+        "ARG OPENCLAWENV_SKILL_SCAN_FAIL_ON_SEVERITY="
         f"{DEFAULT_SKILL_SCAN_FAIL_ON_SEVERITY}",
         "RUN if [ -d "
         f'"{skills_root}"'
@@ -205,9 +207,9 @@ def _skill_scan_lines(manifest: Manifest) -> list[str]:
         " -mindepth 1 -maxdepth 1 -type d -print -quit | grep -q .; then "
         "skill-scanner scan-all "
         f'"{skills_root}"'
-        ' --recursive --check-overlap --format "$OPENENV_SKILL_SCAN_FORMAT"'
-        ' --policy "$OPENENV_SKILL_SCAN_POLICY"'
-        ' --fail-on-severity "$OPENENV_SKILL_SCAN_FAIL_ON_SEVERITY"; '
+        ' --recursive --check-overlap --format "$OPENCLAWENV_SKILL_SCAN_FORMAT"'
+        ' --policy "$OPENCLAWENV_SKILL_SCAN_POLICY"'
+        ' --fail-on-severity "$OPENCLAWENV_SKILL_SCAN_FAIL_ON_SEVERITY"; '
         "else echo 'No skills to scan; skipping skill-scanner.'; fi",
     ]
 

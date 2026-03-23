@@ -4,7 +4,7 @@
 [![Coverage](https://fipciu1996.github.io/OpenClaw-env-manager/coverage.svg)](https://fipciu1996.github.io/OpenClaw-env-manager/coverage/)
 
 OpenClaw-env-manager is a Python CLI for defining an OpenClaw agent environment in one
-declarative `openenv.toml` file and turning it into deterministic Docker
+declarative `openclawenv.toml` file and turning it into deterministic Docker
 artifacts.
 
 When run without arguments, the CLI opens an interactive terminal menu for bot
@@ -12,8 +12,8 @@ management.
 
 It is inspired by Poetry's manifest-plus-lock workflow:
 
-- `openenv.toml` describes intent
-- `openenv.lock` captures deterministic build inputs
+- `openclawenv.toml` describes intent
+- `openclawenv.lock` captures deterministic build inputs
 - `clawopenenv scan` runs an optional preflight security scan for materialized skills
 - `clawopenenv export dockerfile` renders a standalone Dockerfile
 - `clawopenenv export compose` renders a bot-specific docker-compose file
@@ -148,10 +148,10 @@ Before the first release, configure a PyPI Trusted Publisher for:
 
 Project documentation is generated with `MkDocs + mkdocstrings`. The `docs/`
 directory holds narrative pages, while the API reference is generated directly
-from `src/openenv/`.
+from the internal Python package implementation.
 
 The docs also include a dedicated reference page for the generated
-`openenv.toml` structure, including the top-level sections, field meanings, and
+`openclawenv.toml` structure, including the top-level sections, field meanings, and
 managed-bot file layout.
 
 Install the docs toolchain:
@@ -335,7 +335,7 @@ managed bots, and generated images:
 
 ## Manifest Shape
 
-`openenv.toml` contains five top-level sections:
+`openclawenv.toml` contains five top-level sections:
 
 - `project`
 - `runtime`
@@ -399,7 +399,7 @@ read_only_root = false
 
 The `agent` section supports both inline markdown content and relative `.md`
 file references. For example, `agents_md = "AGENTS.md"` will load
-`AGENTS.md` from the same directory as `openenv.toml`.
+`AGENTS.md` from the same directory as `openclawenv.toml`.
 
 Even if they are not declared manually, OpenClaw-env-manager normalizes manifests so that
 `deus-context-engine`, `self-improving-agent`, `skill-security-review`,
@@ -500,9 +500,9 @@ make build
 You can override defaults, for example:
 
 ```bash
-make lock MANIFEST=examples/demo.openenv.toml LOCKFILE=examples/demo.openenv.lock
+make lock MANIFEST=examples/demo.openclawenv.toml LOCKFILE=examples/demo.openclawenv.lock
 make dockerfile DOCKERFILE=build/Dockerfile
-make build TAG=openenv/demo:dev
+make build TAG=openclawenv/demo:dev
 ```
 
 ## Interactive Bot Menu
@@ -514,14 +514,14 @@ Running `clawopenenv` without parameters opens a menu that lets you:
 - from the bot selection screen, generate a shared stack at
   `bots/all-bots-compose.yml` with one gateway and one bot service per managed
   bot
-- open a listed bot and generate `openenv.lock`, `Dockerfile`, and bot-specific
+- open a listed bot and generate `openclawenv.lock`, `Dockerfile`, and bot-specific
   `docker-compose` artifacts
 - open a listed bot and improve its `*.md` documents through OpenRouter
   tool calling, with the resulting markdown normalized to consistent English
 - list running bots launched from `bots/<bot-slug>/docker-compose-*.yml`
 - open a running bot and preview recent container logs
 - open a running bot and create a skill snapshot, which inspects installed
-  skills in the running container and updates `openenv.toml` with any new
+  skills in the running container and updates `openclawenv.toml` with any new
   discoveries
 - add a new bot by answering interactive questions about role, skill sources,
   dependencies, secrets, sites, and databases
@@ -531,7 +531,7 @@ Running `clawopenenv` without parameters opens a menu that lets you:
 - edit an existing bot and rewrite its stored manifest data
 - delete an existing bot together with its stored manifest data
 
-Managed bots are stored under `bots/<bot-slug>/openenv.toml`.
+Managed bots are stored under `bots/<bot-slug>/openclawenv.toml`.
 For bots created from the interactive menu, secret refs are stored in
 `bots/<bot-slug>/.env` instead of `[[runtime.secret_refs]]` blocks inside the
 manifest. Agent documents are stored as sibling markdown files such as
@@ -552,7 +552,7 @@ The generated image writes:
 - the OpenClaw workspace files such as `AGENTS.md`, `SOUL.md`, and `USER.md`
 - inline skills under `<workspace>/skills/<skill-name>/`
 - a generated `openclaw.json`
-- copies of `openenv.toml` and `openenv.lock` under `/opt/openenv`
+- copies of `openclawenv.toml` and `openclawenv.lock` under `/opt/openclawenv`
 - Python plus Node.js tooling available in the image, including `node`, `npm`,
   and `npx`
 - exact `runtime.node_packages` installed globally with `npm install --global`
@@ -566,7 +566,7 @@ The generated image writes:
 - a build-time `skill-scanner scan-all` gate against `<workspace>/skills`, using
   `balanced` policy and failing on `high` severity by default
 
-`runtime.base_image` is still preserved and pinned in `openenv.lock`, but it is
+`runtime.base_image` is still preserved and pinned in `openclawenv.lock`, but it is
 used as the sandbox/agent image inside the generated `openclaw.json`, not as
 the outer gateway container base.
 
@@ -598,10 +598,10 @@ By default, Docker builds also run `npm install -g agent-browser` and
 `agent-browser install` to prepare browser automation, while the mandatory
 `agent-browser-clawdbot` skill documents how agents should use that tool.
 When using the exported Dockerfile directly, you can override the defaults with
-Docker build args such as `OPENENV_SKILL_SCAN_POLICY=strict`,
-`OPENENV_SKILL_SCAN_FORMAT=json`, and
-`OPENENV_SKILL_SCAN_FAIL_ON_SEVERITY=medium`. Use `--keep-artifacts` if you
-want to inspect the materialized skill bundle in `.openenv-scan/`.
+Docker build args such as `OPENCLAWENV_SKILL_SCAN_POLICY=strict`,
+`OPENCLAWENV_SKILL_SCAN_FORMAT=json`, and
+`OPENCLAWENV_SKILL_SCAN_FAIL_ON_SEVERITY=medium`. Use `--keep-artifacts` if you
+want to inspect the materialized skill bundle in `.openclawenv-scan/`.
 
 Example GitHub Actions step for the exported Dockerfile:
 
@@ -610,9 +610,9 @@ Example GitHub Actions step for the exported Dockerfile:
   run: |
     docker build \
       --file Dockerfile \
-      --tag openenv/agent:ci \
-      --build-arg OPENENV_SKILL_SCAN_POLICY=strict \
-      --build-arg OPENENV_SKILL_SCAN_FAIL_ON_SEVERITY=medium \
+      --tag openclawenv/agent:ci \
+      --build-arg OPENCLAWENV_SKILL_SCAN_POLICY=strict \
+      --build-arg OPENCLAWENV_SKILL_SCAN_FAIL_ON_SEVERITY=medium \
       .
 ```
 

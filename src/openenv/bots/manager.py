@@ -66,6 +66,10 @@ from openenv.manifests.writer import render_manifest
 DEFAULT_SYSTEM_PACKAGES = ["git", "curl", "chromium"]
 DEFAULT_LANGUAGE = "pl"
 MANDATORY_SKILLS_LABEL = ", ".join(MANDATORY_SKILL_SOURCES)
+MANIFEST_FILENAME = "openclawenv.toml"
+LEGACY_MANIFEST_FILENAME = "openenv.toml"
+LOCKFILE_FILENAME = "openclawenv.lock"
+LEGACY_LOCKFILE_FILENAME = "openenv.lock"
 AGENT_DOC_FILENAMES = {
     "agents_md": "AGENTS.md",
     "soul_md": "SOUL.md",
@@ -91,12 +95,12 @@ YES_WORDS = {
 }
 MESSAGES = {
     "pl": {
-        "language_title": "Open-env - Wybierz jezyk / Choose language",
+        "language_title": "OpenClawenv - Wybierz jezyk / Choose language",
         "language_option_pl": "1. Polski",
         "language_option_en": "2. English",
         "language_prompt": "Wybierz jezyk / Choose language [1-2, domyslnie/default 1]: ",
         "language_invalid": "Nieznany wybor / Unknown choice. Wpisz / Enter 1/2 albo / or pl/en.",
-        "menu_title": "Open-env - Interaktywne menu",
+        "menu_title": "OpenClawenv - Interaktywne menu",
         "menu_list": "1. Wylistuj boty",
         "menu_add": "2. Dodaj nowego bota",
         "menu_edit": "3. Edytuj bota",
@@ -105,7 +109,7 @@ MESSAGES = {
         "menu_exit": "6. Zakoncz",
         "menu_prompt": "Wybierz opcje [1-6]: ",
         "menu_unknown": "Nieznana opcja. Wybierz 1, 2, 3, 4, 5 lub 6.",
-        "menu_exit_message": "Zamykam menu Open-env.",
+        "menu_exit_message": "Zamykam menu OpenClawenv.",
         "no_bots": "Brak zarejestrowanych botow.",
         "bots_header": "Zarejestrowane boty:",
         "bots_generate_stack": "A. Generuj wspolny stack dla wszystkich botow",
@@ -219,12 +223,12 @@ MESSAGES = {
         "out_of_range": "Numer bota jest poza zakresem.",
     },
     "en": {
-        "language_title": "Open-env - Wybierz jezyk / Choose language",
+        "language_title": "OpenClawenv - Wybierz jezyk / Choose language",
         "language_option_pl": "1. Polski",
         "language_option_en": "2. English",
         "language_prompt": "Wybierz jezyk / Choose language [1-2, domyslnie/default 1]: ",
         "language_invalid": "Nieznany wybor / Unknown choice. Wpisz / Enter 1/2 albo / or pl/en.",
-        "menu_title": "Open-env - Interactive menu",
+        "menu_title": "OpenClawenv - Interactive menu",
         "menu_list": "1. List bots",
         "menu_add": "2. Add a new bot",
         "menu_edit": "3. Edit a bot",
@@ -233,7 +237,7 @@ MESSAGES = {
         "menu_exit": "6. Exit",
         "menu_prompt": "Choose an option [1-6]: ",
         "menu_unknown": "Unknown option. Choose 1, 2, 3, 4, 5, or 6.",
-        "menu_exit_message": "Closing the Open-env menu.",
+        "menu_exit_message": "Closing the OpenClawenv menu.",
         "no_bots": "No registered bots.",
         "bots_header": "Registered bots:",
         "bots_generate_stack": "A. Generate a shared stack for all bots",
@@ -454,13 +458,33 @@ def all_bots_compose_path(root: str | Path) -> Path:
     return bots_root(root) / all_bots_compose_filename()
 
 
+def _resolve_bot_manifest_path(bot_dir: Path) -> Path | None:
+    """Return the preferred manifest path for one bot, with legacy fallback support."""
+    for candidate in (bot_dir / MANIFEST_FILENAME, bot_dir / LEGACY_MANIFEST_FILENAME):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _preferred_lockfile_path(bot_dir: Path) -> Path:
+    """Return the preferred lockfile path for a bot directory."""
+    preferred = bot_dir / LOCKFILE_FILENAME
+    legacy = bot_dir / LEGACY_LOCKFILE_FILENAME
+    if preferred.exists() or not legacy.exists():
+        return preferred
+    return legacy
+
+
 def discover_bots(root: str | Path) -> list[BotRecord]:
     """Discover managed bot manifests."""
     records: list[BotRecord] = []
     root_path = bots_root(root)
     if not root_path.exists():
         return records
-    for manifest_path in sorted(root_path.glob("*/openenv.toml")):
+    for bot_dir in sorted(path for path in root_path.iterdir() if path.is_dir()):
+        manifest_path = _resolve_bot_manifest_path(bot_dir)
+        if manifest_path is None:
+            continue
         try:
             manifest, _ = load_manifest(manifest_path)
         except OpenEnvError:
@@ -484,7 +508,7 @@ def create_bot(root: str | Path, answers: BotAnswers) -> BotRecord:
     bot_dir.mkdir(parents=True, exist_ok=False)
     manifest = build_bot_manifest(answers)
     _write_agent_docs(bot_dir, manifest.agent)
-    manifest_path = bot_dir / "openenv.toml"
+    manifest_path = bot_dir / MANIFEST_FILENAME
     manifest_path.write_text(render_manifest(manifest), encoding="utf-8")
     write_secret_env(
         secret_env_path(bot_dir),
@@ -514,8 +538,11 @@ def update_bot(root: str | Path, existing_slug: str, answers: BotAnswers) -> Bot
         target_dir = current_dir
 
     _write_agent_docs(target_dir, manifest.agent)
-    manifest_path = target_dir / "openenv.toml"
+    manifest_path = target_dir / MANIFEST_FILENAME
     manifest_path.write_text(render_manifest(manifest), encoding="utf-8")
+    legacy_manifest_path = target_dir / LEGACY_MANIFEST_FILENAME
+    if legacy_manifest_path.exists():
+        legacy_manifest_path.unlink()
     write_secret_env(
         secret_env_path(target_dir),
         answers.secret_names,
@@ -535,8 +562,9 @@ def delete_bot(root: str | Path, slug: str) -> None:
 
 def load_bot(root: str | Path, slug: str) -> BotRecord:
     """Load a single managed bot by slug."""
-    manifest_path = bots_root(root) / slugify_name(slug) / "openenv.toml"
-    if not manifest_path.exists():
+    bot_dir = bots_root(root) / slugify_name(slug)
+    manifest_path = _resolve_bot_manifest_path(bot_dir)
+    if manifest_path is None:
         raise OpenEnvError(f"Bot `{slug}` does not exist.")
     manifest, _ = load_manifest(manifest_path)
     return BotRecord(
@@ -598,7 +626,7 @@ def create_skill_snapshot(root: str | Path, slug: str) -> SkillSnapshotResult:
     rendered_manifest = render_manifest(manifest)
     running_bot.bot.manifest_path.write_text(rendered_manifest, encoding="utf-8")
 
-    lock_path = running_bot.bot.manifest_path.with_name("openenv.lock")
+    lock_path = _preferred_lockfile_path(running_bot.bot.manifest_path.parent)
     updated_lock_path: Path | None = None
     if lock_path.exists():
         existing_lock = load_lockfile(lock_path)
@@ -628,7 +656,7 @@ def generate_bot_artifacts(root: str | Path, slug: str) -> GeneratedArtifacts:
     manifest, raw_manifest_text = load_manifest(bot.manifest_path)
     lockfile = build_lockfile(manifest, raw_manifest_text)
 
-    lock_path = bot.manifest_path.with_name("openenv.lock")
+    lock_path = _preferred_lockfile_path(bot.manifest_path.parent)
     write_lockfile(lock_path, lockfile)
     raw_lock_text = dump_lockfile(lockfile)
 
@@ -759,7 +787,7 @@ def build_bot_manifest(answers: BotAnswers) -> Manifest:
             system_packages=system_packages,
             python_packages=answers.python_packages,
             node_packages=answers.node_packages,
-            env={"OPENENV_PROJECT": slug, "PYTHONUNBUFFERED": "1"},
+            env={"OPENCLAWENV_PROJECT": slug, "PYTHONUNBUFFERED": "1"},
             user="agent",
             workdir="/workspace",
             secret_refs=[],

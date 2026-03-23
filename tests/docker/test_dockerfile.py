@@ -24,7 +24,7 @@ FIXTURES = TESTS_ROOT / "fixtures"
 
 class DockerfileTests(unittest.TestCase):
     def test_dockerfile_matches_golden_fixture(self) -> None:
-        manifest, raw_manifest_text = load_manifest(FIXTURES / "example.openenv.toml")
+        manifest, raw_manifest_text = load_manifest(FIXTURES / "example.openclawenv.toml")
         lockfile = build_lockfile(manifest, raw_manifest_text)
         dockerfile = render_dockerfile(
             manifest,
@@ -37,7 +37,7 @@ class DockerfileTests(unittest.TestCase):
         self.assertEqual(dockerfile, expected)
 
     def test_dockerfile_uses_openclaw_gateway_runtime_base(self) -> None:
-        manifest, raw_manifest_text = load_manifest(FIXTURES / "example.openenv.toml")
+        manifest, raw_manifest_text = load_manifest(FIXTURES / "example.openclawenv.toml")
         lockfile = build_lockfile(manifest, raw_manifest_text)
 
         dockerfile = render_dockerfile(
@@ -49,14 +49,16 @@ class DockerfileTests(unittest.TestCase):
 
         self.assertIn(f"FROM {OPENCLAW_GATEWAY_RUNTIME_IMAGE}", dockerfile)
         self.assertIn(
-            'LABEL io.openenv.sandbox-image="python:3.12-slim@sha256:',
+            'LABEL io.openclawenv.sandbox-image="python:3.12-slim@sha256:',
             dockerfile,
         )
+        self.assertIn("USER root", dockerfile)
+        self.assertTrue(dockerfile.rstrip().endswith("USER node"))
         self.assertNotIn("WORKDIR /workspace", dockerfile)
         self.assertNotIn("USER agent", dockerfile)
 
     def test_dockerfile_always_installs_skill_scanner(self) -> None:
-        manifest, raw_manifest_text = load_manifest(FIXTURES / "example.openenv.toml")
+        manifest, raw_manifest_text = load_manifest(FIXTURES / "example.openclawenv.toml")
         manifest.runtime.python_packages = []
         lockfile = build_lockfile(manifest, raw_manifest_text)
         lockfile.python_packages = []
@@ -74,7 +76,7 @@ class DockerfileTests(unittest.TestCase):
         )
 
     def test_dockerfile_always_installs_nodejs_and_npx_support(self) -> None:
-        manifest, raw_manifest_text = load_manifest(FIXTURES / "example.openenv.toml")
+        manifest, raw_manifest_text = load_manifest(FIXTURES / "example.openclawenv.toml")
         lockfile = build_lockfile(manifest, raw_manifest_text)
 
         dockerfile = render_dockerfile(
@@ -100,7 +102,7 @@ class DockerfileTests(unittest.TestCase):
         self.assertIn("RUN agent-browser install", dockerfile)
 
     def test_dockerfile_runs_skill_scan_during_build(self) -> None:
-        manifest, raw_manifest_text = load_manifest(FIXTURES / "example.openenv.toml")
+        manifest, raw_manifest_text = load_manifest(FIXTURES / "example.openclawenv.toml")
         lockfile = build_lockfile(manifest, raw_manifest_text)
 
         dockerfile = render_dockerfile(
@@ -111,15 +113,15 @@ class DockerfileTests(unittest.TestCase):
         )
 
         self.assertIn(
-            f"ARG OPENENV_SKILL_SCAN_FORMAT={DEFAULT_SKILL_SCAN_FORMAT}",
+            f"ARG OPENCLAWENV_SKILL_SCAN_FORMAT={DEFAULT_SKILL_SCAN_FORMAT}",
             dockerfile,
         )
         self.assertIn(
-            f"ARG OPENENV_SKILL_SCAN_POLICY={DEFAULT_SKILL_SCAN_POLICY}",
+            f"ARG OPENCLAWENV_SKILL_SCAN_POLICY={DEFAULT_SKILL_SCAN_POLICY}",
             dockerfile,
         )
         self.assertIn(
-            "ARG OPENENV_SKILL_SCAN_FAIL_ON_SEVERITY="
+            "ARG OPENCLAWENV_SKILL_SCAN_FAIL_ON_SEVERITY="
             f"{DEFAULT_SKILL_SCAN_FAIL_ON_SEVERITY}",
             dockerfile,
         )
@@ -129,7 +131,7 @@ class DockerfileTests(unittest.TestCase):
         )
 
     def test_dockerfile_installs_freeride_into_openclaw_workspace(self) -> None:
-        manifest, raw_manifest_text = load_manifest(FIXTURES / "example.openenv.toml")
+        manifest, raw_manifest_text = load_manifest(FIXTURES / "example.openclawenv.toml")
         lockfile = build_lockfile(manifest, raw_manifest_text)
 
         dockerfile = render_dockerfile(
@@ -152,7 +154,7 @@ class DockerfileTests(unittest.TestCase):
         )
 
     def test_dockerfile_skips_build_time_skill_scan_without_skills(self) -> None:
-        manifest, raw_manifest_text = load_manifest(FIXTURES / "example.openenv.toml")
+        manifest, raw_manifest_text = load_manifest(FIXTURES / "example.openclawenv.toml")
         manifest.skills = []
         lockfile = build_lockfile(manifest, raw_manifest_text)
 
@@ -164,4 +166,5 @@ class DockerfileTests(unittest.TestCase):
         )
 
         self.assertNotIn("skill-scanner scan-all", dockerfile)
-        self.assertNotIn("OPENENV_SKILL_SCAN_POLICY", dockerfile)
+        self.assertNotIn("OPENCLAWENV_SKILL_SCAN_POLICY", dockerfile)
+

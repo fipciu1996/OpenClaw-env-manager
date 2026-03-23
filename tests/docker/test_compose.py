@@ -25,20 +25,20 @@ FIXTURES = TESTS_ROOT / "fixtures"
 
 class ComposeTests(unittest.TestCase):
     def test_compose_matches_golden_fixture(self) -> None:
-        manifest, raw_manifest_text = load_manifest(FIXTURES / "example.openenv.toml")
+        manifest, raw_manifest_text = load_manifest(FIXTURES / "example.openclawenv.toml")
         build_lockfile(manifest, raw_manifest_text)
 
-        compose_text = render_compose(manifest, "openenv/ops-agent:1.2.3")
+        compose_text = render_compose(manifest, "openclawenv/ops-agent:1.2.3")
         expected = (FIXTURES / "example.compose.yml").read_text(encoding="utf-8")
 
         self.assertEqual(compose_text, expected)
 
     def test_compose_builds_gateway_image_from_local_dockerfile(self) -> None:
-        manifest, _ = load_manifest(FIXTURES / "example.openenv.toml")
+        manifest, _ = load_manifest(FIXTURES / "example.openclawenv.toml")
 
-        compose_text = render_compose(manifest, "openenv/ops-agent:1.2.3")
+        compose_text = render_compose(manifest, "openclawenv/ops-agent:1.2.3")
 
-        self.assertIn('image: "${OPENCLAW_IMAGE:-openenv/ops-agent:1.2.3}"', compose_text)
+        self.assertIn('image: "${OPENCLAW_IMAGE:-openclawenv/ops-agent:1.2.3}"', compose_text)
         self.assertIn("    build:", compose_text)
         self.assertIn('      context: "."', compose_text)
         self.assertIn('      dockerfile: "Dockerfile"', compose_text)
@@ -69,33 +69,33 @@ class ComposeTests(unittest.TestCase):
         )
 
     def test_env_file_matches_golden_fixture(self) -> None:
-        manifest, _ = load_manifest(FIXTURES / "example.openenv.toml")
+        manifest, _ = load_manifest(FIXTURES / "example.openclawenv.toml")
 
-        env_text = render_env_file(manifest, "openenv/ops-agent:1.2.3")
+        env_text = render_env_file(manifest, "openclawenv/ops-agent:1.2.3")
         expected = (FIXTURES / "example.bot.env").read_text(encoding="utf-8")
 
         self.assertEqual(env_text, expected)
 
     def test_render_all_bots_compose_contains_shared_gateway_and_each_bot(self) -> None:
-        manifest, _ = load_manifest(FIXTURES / "example.openenv.toml")
+        manifest, _ = load_manifest(FIXTURES / "example.openclawenv.toml")
         second_manifest = deepcopy(manifest)
         second_manifest.project.name = "analytics-agent"
         second_manifest.project.version = "2.0.0"
         second_manifest.project.description = "Analytics support"
         second_manifest.openclaw.agent_name = "Analytics Agent"
-        second_manifest.runtime.env["OPENENV_PROJECT"] = "analytics-agent"
+        second_manifest.runtime.env["OPENCLAWENV_PROJECT"] = "analytics-agent"
 
         compose_text = render_all_bots_compose(
             [
                 AllBotsComposeSpec(
                     slug="operations-agent",
                     manifest=manifest,
-                    image_tag="openenv/ops-agent:1.2.3",
+                    image_tag="openclawenv/ops-agent:1.2.3",
                 ),
                 AllBotsComposeSpec(
                     slug="analytics-agent",
                     manifest=second_manifest,
-                    image_tag="openenv/analytics-agent:2.0.0",
+                    image_tag="openclawenv/analytics-agent:2.0.0",
                 ),
             ]
         )
@@ -108,3 +108,4 @@ class ComposeTests(unittest.TestCase):
         self.assertIn('      context: "./analytics-agent"', compose_text)
         self.assertIn('      - "./operations-agent/.operations-agent.env"', compose_text)
         self.assertIn('      - "./analytics-agent/.analytics-agent.env"', compose_text)
+

@@ -1,4 +1,4 @@
-"""docker-compose generation for Open-env."""
+"""docker-compose generation for OpenClawenv."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Legacy setuptools entrypoint for Open-env."""
+"""Legacy setuptools entrypoint for OpenClawenv."""
 
 from setuptools import setup
 
