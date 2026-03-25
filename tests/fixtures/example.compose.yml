@@ -23,6 +23,9 @@ services:
       TZ: "${OPENCLAW_TZ:-UTC}"
     cap_drop:
       - ALL
+    cap_add:
+      - DAC_OVERRIDE
+      - FOWNER
     security_opt:
       - no-new-privileges:true
     read_only: true
@@ -55,7 +58,7 @@ services:
       [
         "sh",
         "-lc",
-        "set -eu; run_clawhub() { if command -v clawhub >/dev/null 2>&1; then clawhub \"$@\"; else npx --yes clawhub@latest \"$@\"; fi; }; mkdir -p '/opt/openclaw/workspace/skills'; if [ ! -f '/opt/openclaw/workspace/skills/deus-context-engine/SKILL.md' ] || grep -qF 'This skill is referenced from an external catalog.' '/opt/openclaw/workspace/skills/deus-context-engine/SKILL.md'; then rm -rf '/opt/openclaw/workspace/skills/deus-context-engine' && run_clawhub install 'deus-context-engine' --workdir '/opt/openclaw/workspace' --force --no-input; fi; if [ ! -f '/opt/openclaw/workspace/skills/self-improving-agent/SKILL.md' ] || grep -qF 'This skill is referenced from an external catalog.' '/opt/openclaw/workspace/skills/self-improving-agent/SKILL.md'; then rm -rf '/opt/openclaw/workspace/skills/self-improving-agent' && run_clawhub install 'self-improving-agent' --workdir '/opt/openclaw/workspace' --force --no-input; fi; if [ ! -f '/opt/openclaw/workspace/skills/skill-security-review/SKILL.md' ] || grep -qF 'This skill is referenced from an external catalog.' '/opt/openclaw/workspace/skills/skill-security-review/SKILL.md'; then rm -rf '/opt/openclaw/workspace/skills/skill-security-review' && run_clawhub install 'skill-security-review' --workdir '/opt/openclaw/workspace' --force --no-input; fi; if [ ! -f '/opt/openclaw/workspace/skills/free-ride/SKILL.md' ] || grep -qF 'This skill is referenced from an external catalog.' '/opt/openclaw/workspace/skills/free-ride/SKILL.md'; then rm -rf '/opt/openclaw/workspace/skills/free-ride' '/opt/openclaw/workspace/skills/freeride' && run_clawhub install 'freeride' --workdir '/opt/openclaw/workspace' --force --no-input && if [ -d '/opt/openclaw/workspace/skills/freeride' ]; then mv '/opt/openclaw/workspace/skills/freeride' '/opt/openclaw/workspace/skills/free-ride'; fi; fi; if [ ! -f '/opt/openclaw/workspace/skills/agent-browser-clawdbot/SKILL.md' ] || grep -qF 'This skill is referenced from an external catalog.' '/opt/openclaw/workspace/skills/agent-browser-clawdbot/SKILL.md'; then rm -rf '/opt/openclaw/workspace/skills/agent-browser-clawdbot' && run_clawhub install 'agent-browser-clawdbot' --workdir '/opt/openclaw/workspace' --force --no-input; fi; exec node dist/index.js gateway --bind \"${OPENCLAW_GATEWAY_BIND:-lan}\" --port 18789",
+        "set -eu; run_clawhub() { if command -v clawhub >/dev/null 2>&1; then clawhub \"$@\"; else npx --yes clawhub@latest \"$@\"; fi; }; ensure_catalog_skill() { source_name=\"$$1\"; workspace_root=\"$$2\"; skill_dir=\"$$3\"; installed_name=\"$$4\"; skill_md=\"$$5\"; if [ ! -f \"$$skill_md\" ] || grep -qF 'This skill is referenced from an external catalog.' \"$$skill_md\"; then install_root=\"$$(mktemp -d)\" && if run_clawhub install \"$$source_name\" --workdir \"$$install_root\" --force --no-input; then if [ -d \"$$install_root/skills/$$installed_name\" ]; then rm -rf \"$$skill_dir\" \"$$workspace_root/skills/$$installed_name\" && mv \"$$install_root/skills/$$installed_name\" \"$$skill_dir\"; elif [ -f \"$$skill_md\" ]; then echo \"WARNING: ClawHub install for $$source_name did not materialize an expected skill directory; keeping placeholder at $$skill_dir.\" >&2; else echo \"ERROR: ClawHub install for $$source_name did not materialize an expected skill directory and no placeholder exists at $$skill_dir.\" >&2; exit 1; fi; else if [ -f \"$$skill_md\" ]; then echo \"WARNING: ClawHub skill source $$source_name was not found; keeping placeholder at $$skill_dir.\" >&2; else echo \"ERROR: ClawHub skill source $$source_name was not found and no placeholder exists at $$skill_dir.\" >&2; exit 1; fi; fi && rm -rf \"$$install_root\"; fi; }; mkdir -p '/opt/openclaw/workspace/skills'; ensure_catalog_skill 'deus-context-engine' '/opt/openclaw/workspace' '/opt/openclaw/workspace/skills/deus-context-engine' 'deus-context-engine' '/opt/openclaw/workspace/skills/deus-context-engine/SKILL.md'; ensure_catalog_skill 'self-improving-agent' '/opt/openclaw/workspace' '/opt/openclaw/workspace/skills/self-improving-agent' 'self-improving-agent' '/opt/openclaw/workspace/skills/self-improving-agent/SKILL.md'; ensure_catalog_skill 'skill-security-review' '/opt/openclaw/workspace' '/opt/openclaw/workspace/skills/skill-security-review' 'skill-security-review' '/opt/openclaw/workspace/skills/skill-security-review/SKILL.md'; ensure_catalog_skill 'freeride' '/opt/openclaw/workspace' '/opt/openclaw/workspace/skills/free-ride' 'freeride' '/opt/openclaw/workspace/skills/free-ride/SKILL.md'; ensure_catalog_skill 'agent-browser-clawdbot' '/opt/openclaw/workspace' '/opt/openclaw/workspace/skills/agent-browser-clawdbot' 'agent-browser-clawdbot' '/opt/openclaw/workspace/skills/agent-browser-clawdbot/SKILL.md'; exec node dist/index.js gateway --bind \"${OPENCLAW_GATEWAY_BIND:-lan}\" --port 18789",
       ]
     healthcheck:
       test:
@@ -77,6 +80,9 @@ services:
     network_mode: "service:openclaw-gateway"
     cap_drop:
       - ALL
+    cap_add:
+      - DAC_OVERRIDE
+      - FOWNER
     security_opt:
       - no-new-privileges:true
     read_only: true

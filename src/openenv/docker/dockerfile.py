@@ -325,11 +325,15 @@ def _catalog_skill_install_lines(manifest: Manifest) -> list[str]:
     lines: list[str] = []
     for skill_name, source in catalog_skill_specs(manifest.skills):
         skill_path = PurePosixPath(workdir) / "skills" / skill_name
-        installed_path = PurePosixPath(workdir) / "skills" / catalog_install_dir_name(source)
+        installed_name = catalog_install_dir_name(source)
         lines.append(
-            "RUN rm -rf "
-            f"{_rm_target_arguments(skill_path, installed_path)} && ({_clawhub_install_command(source, workdir)})"
-            f"{_clawhub_post_install_move(skill_path, installed_path)}"
+            "RUN "
+            + _catalog_skill_install_script(
+                source=source,
+                workdir=workdir,
+                skill_path=skill_path,
+                installed_name=installed_name,
+            )
         )
     return lines
 
@@ -364,6 +368,51 @@ def _clawhub_install_command(source: str, workdir: str) -> str:
         "npx --yes "
         f"{CLAWHUB_NPX_PACKAGE} install {source_json} --workdir {workdir_json} "
         "--force --no-input"
+    )
+
+
+def _catalog_skill_install_script(
+    *,
+    source: str,
+    workdir: str,
+    skill_path: PurePosixPath,
+    installed_name: str,
+) -> str:
+    """Return a resilient shell script that installs a catalog skill or keeps its placeholder."""
+    skill_md = skill_path / "SKILL.md"
+    install_root_var = "openclawenv_install_root"
+    installed_root = f'${install_root_var}/skills/{installed_name}'
+    cleanup_targets = _rm_target_arguments(skill_path, PurePosixPath(workdir) / "skills" / installed_name)
+    skills_root = json.dumps(str(PurePosixPath(workdir) / "skills"))
+    skill_md_json = json.dumps(str(skill_md))
+    placeholder_marker = json.dumps("This skill is referenced from an external catalog.")
+    install_command = _clawhub_install_command(source, f"${install_root_var}")
+    install_warning = json.dumps(
+        f"WARNING: ClawHub install for {source!r} did not materialize an expected skill directory; "
+        f"keeping placeholder at {skill_path}."
+    )
+    install_error = json.dumps(
+        f"ERROR: ClawHub install for {source!r} did not materialize an expected skill directory and "
+        f"no placeholder exists at {skill_path}."
+    )
+    source_warning = json.dumps(
+        f"WARNING: ClawHub skill source {source!r} was not found; keeping placeholder at {skill_path}."
+    )
+    source_error = json.dumps(
+        f"ERROR: ClawHub skill source {source!r} was not found and no placeholder exists at {skill_path}."
+    )
+    return (
+        f"mkdir -p {skills_root} && "
+        f"if [ ! -f {skill_md_json} ] || grep -qF {placeholder_marker} {skill_md_json}; then "
+        f'{install_root_var}="$(mktemp -d)" && '
+        f"if ({install_command}); then "
+        f'if [ -d "{installed_root}" ]; then rm -rf {cleanup_targets} && mv "{installed_root}" "{skill_path}"; '
+        f"elif [ -f {skill_md_json} ]; then echo {install_warning} >&2; "
+        f"else echo {install_error} >&2; exit 1; fi; "
+        f"else if [ -f {skill_md_json} ]; then echo {source_warning} >&2; "
+        f"else echo {source_error} >&2; exit 1; fi; fi "
+        f'&& rm -rf "${install_root_var}"; '
+        "fi"
     )
 
 

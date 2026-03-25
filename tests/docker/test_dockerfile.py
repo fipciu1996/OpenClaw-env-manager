@@ -159,19 +159,22 @@ class DockerfileTests(unittest.TestCase):
         self.assertIn('ln -sfn "/opt/openclaw" "/root/.openclaw"', dockerfile)
         self.assertNotIn('"/home/agent/.openclaw"', dockerfile)
         self.assertIn(
-            f'RUN rm -rf "/opt/openclaw/workspace/skills/{FREERIDE_SKILL_NAME}" '
-            f'"/opt/openclaw/workspace/skills/{FREERIDE_SKILL_SOURCE}" '
-            f'&& (npx --yes clawhub@latest install "{FREERIDE_SKILL_SOURCE}" '
-            '--workdir "/opt/openclaw/workspace" --force --no-input) '
-            f'&& if [ -d "/opt/openclaw/workspace/skills/{FREERIDE_SKILL_SOURCE}" ]; '
-            f'then mv "/opt/openclaw/workspace/skills/{FREERIDE_SKILL_SOURCE}" '
-            f'"/opt/openclaw/workspace/skills/{FREERIDE_SKILL_NAME}"; fi',
+            f'npx --yes clawhub@latest install "{FREERIDE_SKILL_SOURCE}" '
+            '--workdir "$openclawenv_install_root" --force --no-input',
             dockerfile,
         )
         self.assertIn(
-            'RUN rm -rf "/opt/openclaw/workspace/skills/deus-context-engine" '
-            '&& (npx --yes clawhub@latest install "deus-context-engine" '
-            '--workdir "/opt/openclaw/workspace" --force --no-input)',
+            f'keeping placeholder at /opt/openclaw/workspace/skills/{FREERIDE_SKILL_NAME}.',
+            dockerfile,
+        )
+        self.assertIn(
+            f'&& mv "$openclawenv_install_root/skills/{FREERIDE_SKILL_SOURCE}" '
+            f'"/opt/openclaw/workspace/skills/{FREERIDE_SKILL_NAME}"',
+            dockerfile,
+        )
+        self.assertIn(
+            'npx --yes clawhub@latest install "deus-context-engine" '
+            '--workdir "$openclawenv_install_root" --force --no-input',
             dockerfile,
         )
         self.assertNotIn("@openclaw/clawhub", dockerfile)

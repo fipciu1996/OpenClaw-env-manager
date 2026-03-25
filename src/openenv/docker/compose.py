@@ -143,6 +143,11 @@ def render_compose(manifest: Manifest, image_tag: str) -> str:
         [
             "    cap_drop:",
             "      - ALL",
+        ]
+    )
+    lines.extend(_runtime_capability_lines(_effective_runtime_user(manifest)))
+    lines.extend(
+        [
             "    security_opt:",
             "      - no-new-privileges:true",
             "    read_only: true",
@@ -203,6 +208,11 @@ def render_compose(manifest: Manifest, image_tag: str) -> str:
             '    network_mode: "service:openclaw-gateway"',
             "    cap_drop:",
             "      - ALL",
+        ]
+    )
+    lines.extend(_runtime_capability_lines(_effective_runtime_user(manifest)))
+    lines.extend(
+        [
             "    security_opt:",
             "      - no-new-privileges:true",
             "    read_only: true",
@@ -267,6 +277,11 @@ def render_all_bots_compose(specs: Sequence[AllBotsComposeSpec]) -> str:
         [
             "    cap_drop:",
             "      - ALL",
+        ]
+    )
+    lines.extend(_runtime_capability_lines(shared_runtime_user))
+    lines.extend(
+        [
             "    security_opt:",
             "      - no-new-privileges:true",
             "    read_only: true",
@@ -336,6 +351,11 @@ def render_all_bots_compose(specs: Sequence[AllBotsComposeSpec]) -> str:
                 '    network_mode: "service:openclaw-gateway"',
                 "    cap_drop:",
                 "      - ALL",
+            ]
+        )
+        lines.extend(_runtime_capability_lines(shared_runtime_user))
+        lines.extend(
+            [
                 "    security_opt:",
                 "      - no-new-privileges:true",
                 "    read_only: true",
@@ -530,7 +550,29 @@ def _catalog_skill_bootstrap_commands(workspaces: Sequence[tuple[str, Manifest]]
         (
             "run_clawhub() { if command -v clawhub >/dev/null 2>&1; then "
             f'clawhub "$@"; else npx --yes {CLAWHUB_NPX_PACKAGE} "$@"; fi; }}'
-        )
+        ),
+        (
+            "ensure_catalog_skill() { "
+            'source_name="$$1"; workspace_root="$$2"; skill_dir="$$3"; installed_name="$$4"; skill_md="$$5"; '
+            'if [ ! -f "$$skill_md" ] || grep -qF '
+            f"{_sh_quote(CATALOG_SKILL_PLACEHOLDER_MARKER)} "
+            '"$$skill_md"; then '
+            'install_root="$$(mktemp -d)" && '
+            'if run_clawhub install "$$source_name" --workdir "$$install_root" --force --no-input; then '
+            'if [ -d "$$install_root/skills/$$installed_name" ]; then '
+            'rm -rf "$$skill_dir" "$$workspace_root/skills/$$installed_name" && '
+            'mv "$$install_root/skills/$$installed_name" "$$skill_dir"; '
+            'elif [ -f "$$skill_md" ]; then '
+            'echo "WARNING: ClawHub install for $$source_name did not materialize an expected skill directory; keeping placeholder at $$skill_dir." >&2; '
+            'else echo "ERROR: ClawHub install for $$source_name did not materialize an expected skill directory and no placeholder exists at $$skill_dir." >&2; exit 1; fi; '
+            'else '
+            'if [ -f "$$skill_md" ]; then '
+            'echo "WARNING: ClawHub skill source $$source_name was not found; keeping placeholder at $$skill_dir." >&2; '
+            'else echo "ERROR: ClawHub skill source $$source_name was not found and no placeholder exists at $$skill_dir." >&2; exit 1; fi; '
+            'fi && rm -rf "$$install_root"; '
+            'fi; '
+            "}"
+        ),
     ]
     prepared_workspaces: set[str] = set()
     for workspace, skill_name, source in specs:
@@ -538,20 +580,12 @@ def _catalog_skill_bootstrap_commands(workspaces: Sequence[tuple[str, Manifest]]
             prepared_workspaces.add(workspace)
             commands.append(f"mkdir -p {_sh_quote(str(PurePosixPath(workspace) / 'skills'))}")
         skill_dir = str(PurePosixPath(workspace) / "skills" / skill_name)
-        installed_dir = str(
-            PurePosixPath(workspace) / "skills" / catalog_install_dir_name(source)
-        )
+        installed_name = catalog_install_dir_name(source)
         skill_md = str(PurePosixPath(skill_dir) / "SKILL.md")
         commands.append(
-            "if [ ! -f "
-            f"{_sh_quote(skill_md)}"
-            " ] || grep -qF "
-            f"{_sh_quote(CATALOG_SKILL_PLACEHOLDER_MARKER)} {_sh_quote(skill_md)}; "
-            "then rm -rf "
-            f"{_rm_target_arguments(skill_dir, installed_dir)}"
-            " && run_clawhub install "
-            f"{_sh_quote(source)} --workdir {_sh_quote(workspace)} --force --no-input"
-            f"{_clawhub_post_install_move(skill_dir, installed_dir)}; fi"
+            "ensure_catalog_skill "
+            f"{_sh_quote(source)} {_sh_quote(workspace)} {_sh_quote(skill_dir)} "
+            f"{_sh_quote(installed_name)} {_sh_quote(skill_md)}"
         )
     return commands
 
@@ -640,6 +674,17 @@ def _shared_runtime_user(specs: Sequence[AllBotsComposeSpec]) -> str:
     if any(_effective_runtime_user(spec.manifest) == "root" for spec in specs):
         return "root"
     return "node"
+
+
+def _runtime_capability_lines(runtime_user: str) -> list[str]:
+    """Return the minimal extra capabilities needed by the chosen runtime user."""
+    if runtime_user != "root":
+        return []
+    return [
+        "    cap_add:",
+        "      - DAC_OVERRIDE",
+        "      - FOWNER",
+    ]
 
 
 def _render_environment(environment: dict[str, str]) -> list[str]:

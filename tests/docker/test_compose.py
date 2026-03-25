@@ -60,6 +60,9 @@ class ComposeTests(unittest.TestCase):
         self.assertIn('    user: "root"', compose_text)
         self.assertIn("    cap_drop:", compose_text)
         self.assertIn("      - ALL", compose_text)
+        self.assertIn("    cap_add:", compose_text)
+        self.assertIn("      - DAC_OVERRIDE", compose_text)
+        self.assertIn("      - FOWNER", compose_text)
         expected_entrypoint = (
             '    entrypoint: [' + ", ".join(f'"{part}"' for part in OPENCLAW_HELPER_ENTRYPOINT) + "]"
         )
@@ -103,11 +106,19 @@ class ComposeTests(unittest.TestCase):
         self.assertIn('        "sh",', compose_text)
         self.assertIn('        "-lc",', compose_text)
         self.assertIn(
-            "run_clawhub install 'freeride' --workdir '/opt/openclaw/workspace' --force --no-input",
+            "ensure_catalog_skill()",
             compose_text,
         )
         self.assertIn(
-            "mv '/opt/openclaw/workspace/skills/freeride' '/opt/openclaw/workspace/skills/free-ride'",
+            "run_clawhub install \\\"$$source_name\\\" --workdir \\\"$$install_root\\\" --force --no-input",
+            compose_text,
+        )
+        self.assertIn(
+            "keeping placeholder at $$skill_dir.",
+            compose_text,
+        )
+        self.assertIn(
+            "ensure_catalog_skill 'freeride' '/opt/openclaw/workspace' '/opt/openclaw/workspace/skills/free-ride' 'freeride' '/opt/openclaw/workspace/skills/free-ride/SKILL.md'",
             compose_text,
         )
         self.assertNotIn("@openclaw/clawhub", compose_text)
@@ -219,6 +230,9 @@ class ComposeTests(unittest.TestCase):
         self.assertEqual(compose_text.count('      - "./.all-bots.env"'), 3)
         self.assertIn('    image: "${OPENCLAW_GATEWAY_IMAGE:-ghcr.io/openclaw/openclaw:latest}"', compose_text)
         self.assertIn('    user: "root"', compose_text)
+        self.assertIn("    cap_add:", compose_text)
+        self.assertIn("      - DAC_OVERRIDE", compose_text)
+        self.assertIn("      - FOWNER", compose_text)
         self.assertIn('      HOME: "/opt/openclaw"', compose_text)
         self.assertIn('      NPM_CONFIG_CACHE: "/tmp/.npm"', compose_text)
         self.assertIn('      XDG_CACHE_HOME: "/tmp/.cache"', compose_text)
@@ -228,15 +242,15 @@ class ComposeTests(unittest.TestCase):
         self.assertIn('      - ALL', compose_text)
         self.assertIn('    read_only: true', compose_text)
         self.assertIn(
-            "run_clawhub install 'freeride' --workdir '/opt/openclaw/workspace/operations-agent' --force --no-input",
+            "ensure_catalog_skill 'freeride' '/opt/openclaw/workspace/operations-agent' '/opt/openclaw/workspace/operations-agent/skills/free-ride' 'freeride' '/opt/openclaw/workspace/operations-agent/skills/free-ride/SKILL.md'",
             compose_text,
         )
         self.assertIn(
-            "run_clawhub install 'freeride' --workdir '/opt/openclaw/workspace/analytics-agent' --force --no-input",
+            "ensure_catalog_skill 'freeride' '/opt/openclaw/workspace/analytics-agent' '/opt/openclaw/workspace/analytics-agent/skills/free-ride' 'freeride' '/opt/openclaw/workspace/analytics-agent/skills/free-ride/SKILL.md'",
             compose_text,
         )
         self.assertIn(
-            "mv '/opt/openclaw/workspace/operations-agent/skills/freeride' '/opt/openclaw/workspace/operations-agent/skills/free-ride'",
+            "keeping placeholder at $$skill_dir.",
             compose_text,
         )
         self.assertNotIn("@openclaw/clawhub", compose_text)
