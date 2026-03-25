@@ -8,12 +8,15 @@ services:
         OPENCLAW_INSTALL_BROWSER: "${OPENCLAW_INSTALL_BROWSER:-}"
         OPENCLAW_INSTALL_DOCKER_CLI: "${OPENCLAW_INSTALL_DOCKER_CLI:-}"
     container_name: "operations-agent-openclaw-gateway"
+    user: "root"
     env_file:
       - ".operations-agent.env"
     environment:
       OPENCLAWENV_PROJECT: "ops-agent"
       PYTHONUNBUFFERED: "1"
-      HOME: "/home/node"
+      HOME: "/root"
+      NPM_CONFIG_CACHE: "/tmp/.npm"
+      XDG_CACHE_HOME: "/tmp/.cache"
       TERM: "xterm-256color"
       OPENCLAW_CONFIG_PATH: "/opt/openclaw/openclaw.json"
       OPENCLAW_STATE_DIR: "/opt/openclaw"
@@ -50,13 +53,9 @@ services:
     restart: unless-stopped
     command:
       [
-        "node",
-        "dist/index.js",
-        "gateway",
-        "--bind",
-        "${OPENCLAW_GATEWAY_BIND:-lan}",
-        "--port",
-        "18789",
+        "sh",
+        "-lc",
+        "set -eu; run_clawhub() { if command -v clawhub >/dev/null 2>&1; then clawhub \"$@\"; else npx --yes clawhub@latest \"$@\"; fi; }; mkdir -p '/opt/openclaw/workspace/skills'; if [ ! -f '/opt/openclaw/workspace/skills/deus-context-engine/SKILL.md' ] || grep -qF 'This skill is referenced from an external catalog.' '/opt/openclaw/workspace/skills/deus-context-engine/SKILL.md'; then rm -rf '/opt/openclaw/workspace/skills/deus-context-engine' && run_clawhub install 'deus-context-engine' --workdir '/opt/openclaw/workspace' --force --no-input; fi; if [ ! -f '/opt/openclaw/workspace/skills/self-improving-agent/SKILL.md' ] || grep -qF 'This skill is referenced from an external catalog.' '/opt/openclaw/workspace/skills/self-improving-agent/SKILL.md'; then rm -rf '/opt/openclaw/workspace/skills/self-improving-agent' && run_clawhub install 'self-improving-agent' --workdir '/opt/openclaw/workspace' --force --no-input; fi; if [ ! -f '/opt/openclaw/workspace/skills/skill-security-review/SKILL.md' ] || grep -qF 'This skill is referenced from an external catalog.' '/opt/openclaw/workspace/skills/skill-security-review/SKILL.md'; then rm -rf '/opt/openclaw/workspace/skills/skill-security-review' && run_clawhub install 'skill-security-review' --workdir '/opt/openclaw/workspace' --force --no-input; fi; if [ ! -f '/opt/openclaw/workspace/skills/free-ride/SKILL.md' ] || grep -qF 'This skill is referenced from an external catalog.' '/opt/openclaw/workspace/skills/free-ride/SKILL.md'; then rm -rf '/opt/openclaw/workspace/skills/free-ride' '/opt/openclaw/workspace/skills/freeride' && run_clawhub install 'freeride' --workdir '/opt/openclaw/workspace' --force --no-input && if [ -d '/opt/openclaw/workspace/skills/freeride' ]; then mv '/opt/openclaw/workspace/skills/freeride' '/opt/openclaw/workspace/skills/free-ride'; fi; fi; if [ ! -f '/opt/openclaw/workspace/skills/agent-browser-clawdbot/SKILL.md' ] || grep -qF 'This skill is referenced from an external catalog.' '/opt/openclaw/workspace/skills/agent-browser-clawdbot/SKILL.md'; then rm -rf '/opt/openclaw/workspace/skills/agent-browser-clawdbot' && run_clawhub install 'agent-browser-clawdbot' --workdir '/opt/openclaw/workspace' --force --no-input; fi; exec node dist/index.js gateway --bind \"${OPENCLAW_GATEWAY_BIND:-lan}\" --port 18789",
       ]
     healthcheck:
       test:
@@ -74,6 +73,7 @@ services:
   openclaw-cli:
     image: "${OPENCLAW_IMAGE:-openclawenv/ops-agent:1.2.3}"
     container_name: "operations-agent-openclaw-cli"
+    user: "root"
     network_mode: "service:openclaw-gateway"
     cap_drop:
       - ALL
@@ -93,7 +93,9 @@ services:
     environment:
       OPENCLAWENV_PROJECT: "ops-agent"
       PYTHONUNBUFFERED: "1"
-      HOME: "/home/node"
+      HOME: "/root"
+      NPM_CONFIG_CACHE: "/tmp/.npm"
+      XDG_CACHE_HOME: "/tmp/.cache"
       TERM: "xterm-256color"
       OPENCLAW_CONFIG_PATH: "/opt/openclaw/openclaw.json"
       OPENCLAW_STATE_DIR: "/opt/openclaw"

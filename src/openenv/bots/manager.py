@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 from openenv.core.skills import (
     MANDATORY_SKILL_SOURCES,
     build_catalog_skill,
+    catalog_skill_specs,
     is_mandatory_skill,
     merge_mandatory_skill_sources,
 )
@@ -82,6 +83,7 @@ LEGACY_LOCKFILE_FILENAME = "openenv.lock"
 MAIN_OPENCLAW_AGENT_ID = "main"
 SHARED_AGENT_STATE_FILENAMES = ("auth-profiles.json", "auth.json", "models.json")
 ENV_PLACEHOLDER_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+CATALOG_SKILL_PLACEHOLDER_MARKER = "This skill is referenced from an external catalog."
 AGENT_DOC_FILENAMES = {
     "agents_md": "AGENTS.md",
     "soul_md": "SOUL.md",
@@ -885,6 +887,10 @@ def _write_shared_bot_workspace(
 ) -> None:
     """Write one bot's runtime workspace into the shared all-bots tree."""
     files = manifest.workspace_files(workspace=shared_workspace, state_dir=shared_state_dir)
+    placeholder_paths = {
+        str(PurePosixPath(shared_workspace) / "skills" / skill_name / "SKILL.md")
+        for skill_name, _ in catalog_skill_specs(manifest.skills)
+    }
     state_dir = PurePosixPath(shared_state_dir)
     workspace_dir = PurePosixPath(shared_workspace)
     shared_workspace_root.mkdir(parents=True, exist_ok=True)
@@ -904,6 +910,13 @@ def _write_shared_bot_workspace(
             shared_workspace_root=shared_workspace_root,
         )
         host_path.parent.mkdir(parents=True, exist_ok=True)
+        if (
+            container_path in placeholder_paths
+            and host_path.exists()
+            and CATALOG_SKILL_PLACEHOLDER_MARKER
+            not in host_path.read_text(encoding="utf-8")
+        ):
+            continue
         host_path.write_text(content, encoding="utf-8")
 
 
@@ -1031,7 +1044,7 @@ def build_bot_manifest(answers: BotAnswers) -> Manifest:
             python_packages=answers.python_packages,
             node_packages=answers.node_packages,
             env={"OPENCLAWENV_PROJECT": slug, "PYTHONUNBUFFERED": "1"},
-            user="agent",
+            user="root",
             workdir="/workspace",
             secret_refs=[],
         ),

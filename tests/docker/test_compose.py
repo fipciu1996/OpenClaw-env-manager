@@ -57,6 +57,7 @@ class ComposeTests(unittest.TestCase):
             '        OPENCLAW_INSTALL_DOCKER_CLI: "${OPENCLAW_INSTALL_DOCKER_CLI:-}"',
             compose_text,
         )
+        self.assertIn('    user: "root"', compose_text)
         self.assertIn("    cap_drop:", compose_text)
         self.assertIn("      - ALL", compose_text)
         expected_entrypoint = (
@@ -94,8 +95,22 @@ class ComposeTests(unittest.TestCase):
             f'${{OPENCLAW_BRIDGE_HOST_BIND:-{DEFAULT_OPENCLAW_BRIDGE_HOST_BIND}}}',
             compose_text,
         )
+        self.assertIn('HOME: "/root"', compose_text)
+        self.assertIn('NPM_CONFIG_CACHE: "/tmp/.npm"', compose_text)
+        self.assertIn('XDG_CACHE_HOME: "/tmp/.cache"', compose_text)
         self.assertIn('OPENCLAW_STATE_DIR: "/opt/openclaw"', compose_text)
         self.assertIn('OPENCLAW_CONFIG_PATH: "/opt/openclaw/openclaw.json"', compose_text)
+        self.assertIn('        "sh",', compose_text)
+        self.assertIn('        "-lc",', compose_text)
+        self.assertIn(
+            "run_clawhub install 'freeride' --workdir '/opt/openclaw/workspace' --force --no-input",
+            compose_text,
+        )
+        self.assertIn(
+            "mv '/opt/openclaw/workspace/skills/freeride' '/opt/openclaw/workspace/skills/free-ride'",
+            compose_text,
+        )
+        self.assertNotIn("@openclaw/clawhub", compose_text)
 
     def test_default_compose_filename_uses_bot_name(self) -> None:
         self.assertEqual(
@@ -203,10 +218,26 @@ class ComposeTests(unittest.TestCase):
         self.assertIn('      - "./analytics-agent/.analytics-agent.env"', compose_text)
         self.assertEqual(compose_text.count('      - "./.all-bots.env"'), 3)
         self.assertIn('    image: "${OPENCLAW_GATEWAY_IMAGE:-ghcr.io/openclaw/openclaw:latest}"', compose_text)
+        self.assertIn('    user: "root"', compose_text)
         self.assertIn('      HOME: "/opt/openclaw"', compose_text)
+        self.assertIn('      NPM_CONFIG_CACHE: "/tmp/.npm"', compose_text)
+        self.assertIn('      XDG_CACHE_HOME: "/tmp/.cache"', compose_text)
         self.assertIn('      OPENCLAW_STATE_DIR: "/opt/openclaw/.openclaw"', compose_text)
         self.assertIn('      OPENCLAW_CONFIG_PATH: "/opt/openclaw/.openclaw/openclaw.json"', compose_text)
         self.assertIn('      - "./.all-bots:/opt/openclaw"', compose_text)
         self.assertIn('      - ALL', compose_text)
         self.assertIn('    read_only: true', compose_text)
+        self.assertIn(
+            "run_clawhub install 'freeride' --workdir '/opt/openclaw/workspace/operations-agent' --force --no-input",
+            compose_text,
+        )
+        self.assertIn(
+            "run_clawhub install 'freeride' --workdir '/opt/openclaw/workspace/analytics-agent' --force --no-input",
+            compose_text,
+        )
+        self.assertIn(
+            "mv '/opt/openclaw/workspace/operations-agent/skills/freeride' '/opt/openclaw/workspace/operations-agent/skills/free-ride'",
+            compose_text,
+        )
+        self.assertNotIn("@openclaw/clawhub", compose_text)
 

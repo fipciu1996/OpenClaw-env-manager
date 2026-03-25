@@ -32,7 +32,7 @@ class ManifestTests(unittest.TestCase):
         manifest, _ = load_manifest(FIXTURES / "example.openclawenv.toml")
 
         self.assertEqual(manifest.project.name, "ops-agent")
-        self.assertEqual(manifest.runtime.user, "agent")
+        self.assertEqual(manifest.runtime.user, "root")
         self.assertEqual(manifest.openclaw.agent_name, "Operations Agent")
         self.assertEqual(manifest.runtime.node_packages, ["typescript@5.8.3"])
         self.assertEqual(len(manifest.skills), 6)

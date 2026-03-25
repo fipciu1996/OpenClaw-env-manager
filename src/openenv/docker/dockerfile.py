@@ -6,7 +6,7 @@ import json
 from pathlib import PurePosixPath
 
 from openenv.core.models import Lockfile, Manifest
-from openenv.core.skills import FREERIDE_SKILL_NAME, FREERIDE_SKILL_SOURCE
+from openenv.core.skills import catalog_install_dir_name, catalog_skill_specs
 from openenv.core.utils import encode_payload, stable_json_dumps
 
 
@@ -21,8 +21,11 @@ DEFAULT_SKILL_SCAN_POLICY = "balanced"
 DEFAULT_SKILL_SCAN_FAIL_ON_SEVERITY = "high"
 DEFAULT_OPENCLAW_RUNTIME_USER = "node"
 DEFAULT_OPENCLAW_RUNTIME_HOME = "/home/node"
+ROOT_RUNTIME_USER = "root"
+ROOT_RUNTIME_HOME = "/root"
 DEFAULT_PYTHON_VENV_PATH = "/opt/openclawenv/.venv"
 DEFAULT_OPENCLAW_DOCKER_GPG_FINGERPRINT = "9DC858229FC7DD38854AE2D88D81803C0EBFCD88"
+CLAWHUB_NPX_PACKAGE = "clawhub@latest"
 
 
 def render_dockerfile(
@@ -84,10 +87,10 @@ def render_dockerfile(
         f'{json.dumps(_payload_writer_script(payload_b64))}'
         "]"
     )
-    lines.extend(_freeride_install_lines(manifest))
+    lines.extend(_catalog_skill_install_lines(manifest))
     lines.extend(_skill_scan_lines(manifest))
     lines.extend(_runtime_permission_lines(manifest))
-    lines.append(f"USER {DEFAULT_OPENCLAW_RUNTIME_USER}")
+    lines.append(f"USER {_effective_runtime_user(manifest)}")
     return "\n".join(lines) + "\n"
 
 
@@ -301,8 +304,8 @@ def _state_link_lines(manifest: Manifest) -> list[str]:
     state_dir = manifest.openclaw.state_dir
     lines = [
         "RUN mkdir -p "
-        f'"{state_dir}" /root "{DEFAULT_OPENCLAW_RUNTIME_HOME}" '
-        f'&& ln -sfn "{state_dir}" /root/.openclaw '
+        f'"{state_dir}" "{ROOT_RUNTIME_HOME}" "{DEFAULT_OPENCLAW_RUNTIME_HOME}" '
+        f'&& ln -sfn "{state_dir}" "{ROOT_RUNTIME_HOME}/.openclaw" '
         f'&& ln -sfn "{state_dir}" "{DEFAULT_OPENCLAW_RUNTIME_HOME}/.openclaw"'
     ]
     if manifest.runtime.user not in {"root", DEFAULT_OPENCLAW_RUNTIME_USER}:
@@ -316,35 +319,73 @@ def _state_link_lines(manifest: Manifest) -> list[str]:
     return lines
 
 
-def _freeride_install_lines(manifest: Manifest) -> list[str]:
-    """Render the special installation steps required for the mandatory FreeRide skill."""
-    if not _has_freeride_skill(manifest):
-        return []
-    skill_path = PurePosixPath(manifest.openclaw.workspace) / "skills" / FREERIDE_SKILL_NAME
-    return [
-        f'RUN rm -rf "{skill_path}" && npx clawhub@latest install {FREERIDE_SKILL_NAME}',
-    ]
+def _catalog_skill_install_lines(manifest: Manifest) -> list[str]:
+    """Render build-time installation steps for skills sourced from an external catalog."""
+    workdir = manifest.openclaw.workspace
+    lines: list[str] = []
+    for skill_name, source in catalog_skill_specs(manifest.skills):
+        skill_path = PurePosixPath(workdir) / "skills" / skill_name
+        installed_path = PurePosixPath(workdir) / "skills" / catalog_install_dir_name(source)
+        lines.append(
+            "RUN rm -rf "
+            f"{_rm_target_arguments(skill_path, installed_path)} && ({_clawhub_install_command(source, workdir)})"
+            f"{_clawhub_post_install_move(skill_path, installed_path)}"
+        )
+    return lines
 
 
 def _runtime_permission_lines(manifest: Manifest) -> list[str]:
     """Render the final directory ownership adjustments for the OpenClaw runtime user."""
-    return [
-        "RUN mkdir -p "
-        f'"{manifest.runtime.workdir}" && '
-        "if id -u "
-        f'"{DEFAULT_OPENCLAW_RUNTIME_USER}"'
-        " >/dev/null 2>&1; then chown -R "
-        f"{DEFAULT_OPENCLAW_RUNTIME_USER}:{DEFAULT_OPENCLAW_RUNTIME_USER} "
-        f'"{manifest.openclaw.state_dir}" "{manifest.runtime.workdir}"; fi'
-    ]
+    runtime_user = _effective_runtime_user(manifest)
+    command = "RUN mkdir -p " f'"{manifest.runtime.workdir}"'
+    if runtime_user != ROOT_RUNTIME_USER:
+        command += (
+            " && if id -u "
+            f'"{runtime_user}"'
+            " >/dev/null 2>&1; then chown -R "
+            f"{runtime_user}:{runtime_user} "
+            f'"{manifest.openclaw.state_dir}" "{manifest.runtime.workdir}"; fi'
+        )
+    return [command]
 
 
-def _has_freeride_skill(manifest: Manifest) -> bool:
-    """Return whether the manifest includes the FreeRide skill by source or workspace name."""
-    return any(
-        skill.source == FREERIDE_SKILL_SOURCE or skill.name == FREERIDE_SKILL_NAME
-        for skill in manifest.skills
+def _effective_runtime_user(manifest: Manifest) -> str:
+    """Return the runtime user supported by the generated OpenClaw wrapper image."""
+    if manifest.runtime.user.strip().casefold() == ROOT_RUNTIME_USER:
+        return ROOT_RUNTIME_USER
+    return DEFAULT_OPENCLAW_RUNTIME_USER
+
+
+def _clawhub_install_command(source: str, workdir: str) -> str:
+    """Return the ClawHub install command used for catalog-backed skills."""
+    workdir_json = json.dumps(workdir)
+    source_json = json.dumps(source)
+    return (
+        "npx --yes "
+        f"{CLAWHUB_NPX_PACKAGE} install {source_json} --workdir {workdir_json} "
+        "--force --no-input"
     )
+
+
+def _clawhub_post_install_move(skill_path: PurePosixPath, installed_path: PurePosixPath) -> str:
+    """Return an optional rename step when ClawHub's directory differs from the wrapper name."""
+    if skill_path == installed_path:
+        return ""
+    return (
+        " && if [ -d "
+        f'"{installed_path}"'
+        " ]; then mv "
+        f'"{installed_path}" "{skill_path}"; '
+        "fi"
+    )
+
+
+def _rm_target_arguments(skill_path: PurePosixPath, installed_path: PurePosixPath) -> str:
+    """Render unique `rm -rf` target arguments for pre-install cleanup."""
+    targets: list[str] = [f'"{skill_path}"']
+    if installed_path != skill_path:
+        targets.append(f'"{installed_path}"')
+    return " ".join(targets)
 
 
 def _escape_label(value: str) -> str:

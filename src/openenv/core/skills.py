@@ -28,10 +28,16 @@ def mandatory_skill_names() -> tuple[str, ...]:
     return tuple(skill_name_for_source(source) for source in MANDATORY_SKILL_SOURCES)
 
 
+def catalog_install_dir_name(source: str) -> str:
+    """Return the default directory name created by ClawHub for a catalog source."""
+    source_name = source.rsplit("/", 1)[-1]
+    return slugify_name(source_name)
+
+
 def skill_name_for_source(source: str) -> str:
     """Convert a catalog source into the local skill directory name."""
     source_name = source.rsplit("/", 1)[-1]
-    return SKILL_SOURCE_NAME_OVERRIDES.get(source_name, slugify_name(source_name))
+    return SKILL_SOURCE_NAME_OVERRIDES.get(source_name, catalog_install_dir_name(source))
 
 
 def build_catalog_skill(source: str, *, mandatory: bool = False) -> SkillConfig:
@@ -66,6 +72,21 @@ def ensure_mandatory_skills(skills: Iterable[SkillConfig]) -> list[SkillConfig]:
             continue
         normalized.append(build_catalog_skill(source, mandatory=True))
     return normalized
+
+
+def catalog_skill_specs(skills: Iterable[SkillConfig]) -> list[tuple[str, str]]:
+    """Return ordered `(name, source)` pairs for skills referenced from an external catalog."""
+    ordered: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for skill in skills:
+        if skill.source is None:
+            continue
+        spec = (skill.name, skill.source)
+        if spec in seen:
+            continue
+        seen.add(spec)
+        ordered.append(spec)
+    return ordered
 
 
 def is_mandatory_skill_reference(reference: str) -> bool:

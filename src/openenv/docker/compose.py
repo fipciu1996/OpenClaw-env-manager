@@ -11,6 +11,7 @@ import secrets
 from pathlib import PurePosixPath
 
 from openenv.core.models import Lockfile, Manifest
+from openenv.core.skills import catalog_install_dir_name, catalog_skill_specs
 from openenv.core.security import assess_runtime_env_security
 from openenv.core.utils import slugify_name
 from openenv.docker.dockerfile import render_runtime_payload
@@ -20,6 +21,7 @@ OPENCLAW_GATEWAY_SERVICE = "openclaw-gateway"
 OPENCLAW_CLI_SERVICE = "openclaw-cli"
 OPENCLAW_HELPER_ENTRYPOINT = ("tail", "-f", "/dev/null")
 DEFAULT_OPENCLAW_HOME = "/home/node"
+ROOT_RUNTIME_HOME = "/root"
 DEFAULT_OPENCLAW_CONFIG_DIR = "./.openclaw"
 DEFAULT_OPENCLAW_WORKSPACE_DIR = "./workspace"
 DEFAULT_OPENCLAW_GATEWAY_HOST_BIND = "127.0.0.1"
@@ -33,6 +35,8 @@ DEFAULT_OPENCLAW_PIDS_LIMIT = "256"
 DEFAULT_OPENCLAW_NOFILE_SOFT = "1024"
 DEFAULT_OPENCLAW_NOFILE_HARD = "2048"
 DEFAULT_OPENCLAW_NPROC = "512"
+DEFAULT_NPM_CACHE_DIR = "/tmp/.npm"
+DEFAULT_XDG_CACHE_HOME = "/tmp/.cache"
 DEFAULT_BUILD_CONTEXT = "."
 DEFAULT_DOCKERFILE_NAME = "Dockerfile"
 DEFAULT_OPENCLAW_GATEWAY_IMAGE = "ghcr.io/openclaw/openclaw:latest"
@@ -48,6 +52,8 @@ ALL_BOTS_GATEWAY_CONTAINER_ROOT = "/opt/openclaw"
 ALL_BOTS_GATEWAY_HOME = ALL_BOTS_GATEWAY_CONTAINER_ROOT
 ALL_BOTS_GATEWAY_STATE_DIR = f"{ALL_BOTS_GATEWAY_CONTAINER_ROOT}/.openclaw"
 ALL_BOTS_GATEWAY_CONFIG_PATH = f"{ALL_BOTS_GATEWAY_STATE_DIR}/openclaw.json"
+CLAWHUB_NPX_PACKAGE = "clawhub@latest"
+CATALOG_SKILL_PLACEHOLDER_MARKER = "This skill is referenced from an external catalog."
 DEFAULT_OPENCLAW_ENV_DEFAULTS: tuple[tuple[str, str], ...] = (
     ("OPENCLAW_GATEWAY_TOKEN", ""),
     ("OPENCLAW_ALLOW_INSECURE_PRIVATE_WS", ""),
@@ -102,6 +108,9 @@ def render_compose(manifest: Manifest, image_tag: str) -> str:
     gateway_name = gateway_container_name(manifest.openclaw.agent_name)
     cli_name = cli_container_name(manifest.openclaw.agent_name)
     image_ref = f"${{OPENCLAW_IMAGE:-{image_tag}}}"
+    gateway_command = _gateway_startup_command(
+        [(manifest.openclaw.workspace, manifest)]
+    )
     config_mount = (
         f"${{OPENCLAW_CONFIG_DIR:-{DEFAULT_OPENCLAW_CONFIG_DIR}}}:{manifest.openclaw.state_dir}"
     )
@@ -124,6 +133,7 @@ def render_compose(manifest: Manifest, image_tag: str) -> str:
         '        OPENCLAW_INSTALL_BROWSER: "${OPENCLAW_INSTALL_BROWSER:-}"',
         '        OPENCLAW_INSTALL_DOCKER_CLI: "${OPENCLAW_INSTALL_DOCKER_CLI:-}"',
         f"    container_name: {_quoted(gateway_name)}",
+        f"    user: {_quoted(_effective_runtime_user(manifest))}",
         "    env_file:",
         f"      - {_quoted(env_file)}",
         "    environment:",
@@ -169,13 +179,9 @@ def render_compose(manifest: Manifest, image_tag: str) -> str:
             "    restart: unless-stopped",
             "    command:",
             "      [",
-            '        "node",',
-            '        "dist/index.js",',
-            '        "gateway",',
-            '        "--bind",',
-            f'        "${{OPENCLAW_GATEWAY_BIND:-{DEFAULT_OPENCLAW_GATEWAY_BIND}}}",',
-            '        "--port",',
-            '        "18789",',
+            '        "sh",',
+            '        "-lc",',
+            f"        {_quoted(gateway_command)},",
             "      ]",
             "    healthcheck:",
             "      test:",
@@ -193,6 +199,7 @@ def render_compose(manifest: Manifest, image_tag: str) -> str:
             f"  {OPENCLAW_CLI_SERVICE}:",
             f"    image: {_quoted(image_ref)}",
             f"    container_name: {_quoted(cli_name)}",
+            f"    user: {_quoted(_effective_runtime_user(manifest))}",
             '    network_mode: "service:openclaw-gateway"',
             "    cap_drop:",
             "      - ALL",
@@ -235,11 +242,22 @@ def render_all_bots_compose(specs: Sequence[AllBotsComposeSpec]) -> str:
         raise ValueError("At least one bot is required to render the shared compose stack.")
     shared_env_file = f"./{all_bots_env_filename()}"
     shared_runtime_mount = f"{ALL_BOTS_GATEWAY_ROOT_DIR}:{ALL_BOTS_GATEWAY_CONTAINER_ROOT}"
+    shared_runtime_user = _shared_runtime_user(specs)
+    gateway_command = _gateway_startup_command(
+        [
+            (
+                str(PurePosixPath(ALL_BOTS_GATEWAY_CONTAINER_ROOT) / "workspace" / spec.slug),
+                spec.manifest,
+            )
+            for spec in specs
+        ]
+    )
     lines = [
         "services:",
         f"  {ALL_BOTS_GATEWAY_SERVICE}:",
         f'    image: {_quoted(f"${{OPENCLAW_GATEWAY_IMAGE:-{DEFAULT_OPENCLAW_GATEWAY_IMAGE}}}")}',
         f"    container_name: {_quoted(ALL_BOTS_GATEWAY_CONTAINER)}",
+        f"    user: {_quoted(shared_runtime_user)}",
         "    env_file:",
         f"      - {_quoted(shared_env_file)}",
         "    environment:",
@@ -275,13 +293,9 @@ def render_all_bots_compose(specs: Sequence[AllBotsComposeSpec]) -> str:
             "    restart: unless-stopped",
             "    command:",
             "      [",
-            '        "node",',
-            '        "dist/index.js",',
-            '        "gateway",',
-            '        "--bind",',
-            f'        "${{OPENCLAW_GATEWAY_BIND:-{DEFAULT_OPENCLAW_GATEWAY_BIND}}}",',
-            '        "--port",',
-            '        "18789",',
+            '        "sh",',
+            '        "-lc",',
+            f"        {_quoted(gateway_command)},",
             "      ]",
             "    healthcheck:",
             "      test:",
@@ -318,6 +332,7 @@ def render_all_bots_compose(specs: Sequence[AllBotsComposeSpec]) -> str:
                 '        OPENCLAW_INSTALL_BROWSER: "${OPENCLAW_INSTALL_BROWSER:-}"',
                 '        OPENCLAW_INSTALL_DOCKER_CLI: "${OPENCLAW_INSTALL_DOCKER_CLI:-}"',
                 f"    container_name: {_quoted(container_name)}",
+                f"    user: {_quoted(shared_runtime_user)}",
                 '    network_mode: "service:openclaw-gateway"',
                 "    cap_drop:",
                 "      - ALL",
@@ -484,10 +499,98 @@ def generate_gateway_token() -> str:
     return secrets.token_urlsafe(24)
 
 
+def _gateway_startup_command(workspaces: Sequence[tuple[str, Manifest]]) -> str:
+    """Return the shell command used to bootstrap catalog skills before starting the gateway."""
+    commands = ["set -eu"]
+    bootstrap_commands = _catalog_skill_bootstrap_commands(workspaces)
+    if bootstrap_commands:
+        commands.extend(bootstrap_commands)
+    commands.append(
+        'exec node dist/index.js gateway --bind "${OPENCLAW_GATEWAY_BIND:-'
+        f'{DEFAULT_OPENCLAW_GATEWAY_BIND}}}" --port 18789'
+    )
+    return "; ".join(commands)
+
+
+def _catalog_skill_bootstrap_commands(workspaces: Sequence[tuple[str, Manifest]]) -> list[str]:
+    """Return shell fragments that install missing catalog skills into bind-mounted workspaces."""
+    specs: list[tuple[str, str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for workspace, manifest in workspaces:
+        for skill_name, source in catalog_skill_specs(manifest.skills):
+            spec = (workspace, skill_name, source)
+            if spec in seen:
+                continue
+            seen.add(spec)
+            specs.append(spec)
+    if not specs:
+        return []
+
+    commands = [
+        (
+            "run_clawhub() { if command -v clawhub >/dev/null 2>&1; then "
+            f'clawhub "$@"; else npx --yes {CLAWHUB_NPX_PACKAGE} "$@"; fi; }}'
+        )
+    ]
+    prepared_workspaces: set[str] = set()
+    for workspace, skill_name, source in specs:
+        if workspace not in prepared_workspaces:
+            prepared_workspaces.add(workspace)
+            commands.append(f"mkdir -p {_sh_quote(str(PurePosixPath(workspace) / 'skills'))}")
+        skill_dir = str(PurePosixPath(workspace) / "skills" / skill_name)
+        installed_dir = str(
+            PurePosixPath(workspace) / "skills" / catalog_install_dir_name(source)
+        )
+        skill_md = str(PurePosixPath(skill_dir) / "SKILL.md")
+        commands.append(
+            "if [ ! -f "
+            f"{_sh_quote(skill_md)}"
+            " ] || grep -qF "
+            f"{_sh_quote(CATALOG_SKILL_PLACEHOLDER_MARKER)} {_sh_quote(skill_md)}; "
+            "then rm -rf "
+            f"{_rm_target_arguments(skill_dir, installed_dir)}"
+            " && run_clawhub install "
+            f"{_sh_quote(source)} --workdir {_sh_quote(workspace)} --force --no-input"
+            f"{_clawhub_post_install_move(skill_dir, installed_dir)}; fi"
+        )
+    return commands
+
+
+def _catalog_skill_placeholder_paths(
+    manifest: Manifest,
+    *,
+    workspace: str | None = None,
+) -> set[str]:
+    """Return container paths of placeholder `SKILL.md` files for catalog-backed skills."""
+    workspace_root = workspace or manifest.openclaw.workspace
+    return {
+        str(PurePosixPath(workspace_root) / "skills" / skill_name / "SKILL.md")
+        for skill_name, _ in catalog_skill_specs(manifest.skills)
+    }
+
+
+def _should_preserve_existing_catalog_skill_stub(
+    host_path: Path,
+    *,
+    container_path: str,
+    placeholder_paths: set[str],
+) -> bool:
+    """Keep installed catalog skills instead of rewriting them back to placeholder content."""
+    if container_path not in placeholder_paths or not host_path.exists():
+        return False
+    try:
+        existing = host_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return True
+    return CATALOG_SKILL_PLACEHOLDER_MARKER not in existing
+
+
 def _base_service_environment(manifest: Manifest) -> dict[str, str]:
     """Return environment variables shared by the gateway and CLI services for one bot."""
     environment = dict(sorted(manifest.runtime.env.items()))
-    environment["HOME"] = DEFAULT_OPENCLAW_HOME
+    environment["HOME"] = _single_bot_runtime_home(manifest)
+    environment["NPM_CONFIG_CACHE"] = DEFAULT_NPM_CACHE_DIR
+    environment["XDG_CACHE_HOME"] = DEFAULT_XDG_CACHE_HOME
     environment["TERM"] = "xterm-256color"
     environment["OPENCLAW_CONFIG_PATH"] = manifest.openclaw.config_path()
     environment["OPENCLAW_STATE_DIR"] = manifest.openclaw.state_dir
@@ -499,6 +602,8 @@ def _shared_gateway_environment() -> dict[str, str]:
     """Return the baseline environment used by the shared gateway in the all-bots stack."""
     return {
         "HOME": ALL_BOTS_GATEWAY_HOME,
+        "NPM_CONFIG_CACHE": DEFAULT_NPM_CACHE_DIR,
+        "XDG_CACHE_HOME": DEFAULT_XDG_CACHE_HOME,
         "TERM": "xterm-256color",
         "OPENCLAW_CONFIG_PATH": ALL_BOTS_GATEWAY_CONFIG_PATH,
         "OPENCLAW_STATE_DIR": ALL_BOTS_GATEWAY_STATE_DIR,
@@ -516,6 +621,27 @@ def _all_bots_cli_container_name(slug: str) -> str:
     return f"all-bots-{slug}-openclaw-cli"
 
 
+def _effective_runtime_user(manifest: Manifest) -> str:
+    """Return the runtime user supported by generated compose services."""
+    if manifest.runtime.user.strip().casefold() == "root":
+        return "root"
+    return "node"
+
+
+def _single_bot_runtime_home(manifest: Manifest) -> str:
+    """Return the home directory used by one bot's dedicated runtime container."""
+    if _effective_runtime_user(manifest) == "root":
+        return ROOT_RUNTIME_HOME
+    return DEFAULT_OPENCLAW_HOME
+
+
+def _shared_runtime_user(specs: Sequence[AllBotsComposeSpec]) -> str:
+    """Return the shared user used by the all-bots gateway and CLI helpers."""
+    if any(_effective_runtime_user(spec.manifest) == "root" for spec in specs):
+        return "root"
+    return "node"
+
+
 def _render_environment(environment: dict[str, str]) -> list[str]:
     """Render compose `environment:` entries preserving the caller's ordering."""
     return [f"      {key}: {_quoted(value)}" for key, value in environment.items()]
@@ -524,6 +650,32 @@ def _render_environment(environment: dict[str, str]) -> list[str]:
 def _quoted(value: str) -> str:
     """Return a YAML-safe quoted scalar using JSON string escaping."""
     return json.dumps(value)
+
+
+def _sh_quote(value: str) -> str:
+    """Return a POSIX-shell-safe single-quoted string."""
+    return "'" + value.replace("'", "'\"'\"'") + "'"
+
+
+def _clawhub_post_install_move(skill_dir: str, installed_dir: str) -> str:
+    """Return an optional rename step when ClawHub's directory differs from the wrapper name."""
+    if skill_dir == installed_dir:
+        return ""
+    return (
+        " && if [ -d "
+        f"{_sh_quote(installed_dir)}"
+        " ]; then mv "
+        f"{_sh_quote(installed_dir)} {_sh_quote(skill_dir)}; "
+        "fi"
+    )
+
+
+def _rm_target_arguments(skill_dir: str, installed_dir: str) -> str:
+    """Render unique `rm -rf` target arguments for pre-install cleanup."""
+    targets = [_sh_quote(skill_dir)]
+    if installed_dir != skill_dir:
+        targets.append(_sh_quote(installed_dir))
+    return " ".join(targets)
 
 
 def materialize_runtime_mount_tree(
@@ -575,6 +727,12 @@ def materialize_runtime_mount_tree(
         if host_path is None or not isinstance(content, str):
             continue
         host_path.parent.mkdir(parents=True, exist_ok=True)
+        if _should_preserve_existing_catalog_skill_stub(
+            host_path,
+            container_path=str(container_path),
+            placeholder_paths=_catalog_skill_placeholder_paths(manifest),
+        ):
+            continue
         host_path.write_text(content, encoding="utf-8")
 
 

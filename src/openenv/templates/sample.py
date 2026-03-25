@@ -22,7 +22,7 @@ SAMPLE_MANIFEST = dedent(
     python_packages = ["requests==2.32.3", "rich==13.9.4"]
     node_packages = ["typescript@5.8.3"]
     env = { PYTHONUNBUFFERED = "1", OPENCLAWENV_PROJECT = "research-agent" }
-    user = "agent"
+    user = "root"
     workdir = "/workspace"
 
     [[runtime.secret_refs]]

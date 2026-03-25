@@ -56,9 +56,10 @@ class DockerfileTests(unittest.TestCase):
         self.assertIn('ARG OPENCLAW_INSTALL_BROWSER=""', dockerfile)
         self.assertIn('ARG OPENCLAW_INSTALL_DOCKER_CLI=""', dockerfile)
         self.assertIn("USER root", dockerfile)
-        self.assertTrue(dockerfile.rstrip().endswith("USER node"))
+        self.assertTrue(dockerfile.rstrip().endswith("USER root"))
         self.assertNotIn("WORKDIR /workspace", dockerfile)
         self.assertNotIn("USER agent", dockerfile)
+        self.assertNotIn("USER node", dockerfile)
         self.assertIn(f'ENV VIRTUAL_ENV="{DEFAULT_PYTHON_VENV_PATH}"', dockerfile)
         self.assertIn(f'ENV PATH="{DEFAULT_PYTHON_VENV_PATH}/bin:$PATH"', dockerfile)
 
@@ -155,13 +156,25 @@ class DockerfileTests(unittest.TestCase):
             raw_lock_text=dump_lockfile(lockfile),
         )
 
-        self.assertIn('ln -sfn "/opt/openclaw" /root/.openclaw', dockerfile)
-        self.assertIn('ln -sfn "/opt/openclaw" "/home/agent/.openclaw"', dockerfile)
+        self.assertIn('ln -sfn "/opt/openclaw" "/root/.openclaw"', dockerfile)
+        self.assertNotIn('"/home/agent/.openclaw"', dockerfile)
         self.assertIn(
             f'RUN rm -rf "/opt/openclaw/workspace/skills/{FREERIDE_SKILL_NAME}" '
-            f"&& npx clawhub@latest install {FREERIDE_SKILL_NAME}",
+            f'"/opt/openclaw/workspace/skills/{FREERIDE_SKILL_SOURCE}" '
+            f'&& (npx --yes clawhub@latest install "{FREERIDE_SKILL_SOURCE}" '
+            '--workdir "/opt/openclaw/workspace" --force --no-input) '
+            f'&& if [ -d "/opt/openclaw/workspace/skills/{FREERIDE_SKILL_SOURCE}" ]; '
+            f'then mv "/opt/openclaw/workspace/skills/{FREERIDE_SKILL_SOURCE}" '
+            f'"/opt/openclaw/workspace/skills/{FREERIDE_SKILL_NAME}"; fi',
             dockerfile,
         )
+        self.assertIn(
+            'RUN rm -rf "/opt/openclaw/workspace/skills/deus-context-engine" '
+            '&& (npx --yes clawhub@latest install "deus-context-engine" '
+            '--workdir "/opt/openclaw/workspace" --force --no-input)',
+            dockerfile,
+        )
+        self.assertNotIn("@openclaw/clawhub", dockerfile)
         self.assertNotIn("pip install --no-cache-dir -e", dockerfile)
 
     def test_dockerfile_skips_build_time_skill_scan_without_skills(self) -> None:

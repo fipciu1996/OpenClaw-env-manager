@@ -5,7 +5,7 @@
     "resolved_reference": "python:3.12-slim@sha256:1111111111111111111111111111111111111111111111111111111111111111"
   },
   "lock_version": 1,
-  "manifest_hash": "b1bdb4d9ebf90956f6e8ed5a5c2c603586db2bb090ccfd6a58153a77c2e46b0f",
+  "manifest_hash": "8d1af23b33f860075e102c7ecc9bc2c3d77ddfe1c66fe941e99bad5a8bce765c",
   "node_packages": [
     {
       "kind": "pinned",
@@ -72,7 +72,7 @@
       "runtime": "openclaw",
       "version": "1.2.3"
     },
-    "raw_manifest_sha256": "15cee1c0fb4164ce283918b078ff879ef36555362775229901796d043b3290aa",
+    "raw_manifest_sha256": "9c738bcce3899052333575e5aab1401cfbef7b4eb1528b36f42dbb0c1feae0fc",
     "runtime": {
       "base_image": "python:3.12-slim@sha256:1111111111111111111111111111111111111111111111111111111111111111",
       "env": {
@@ -99,7 +99,7 @@
         "curl",
         "chromium"
       ],
-      "user": "agent",
+      "user": "root",
       "workdir": "/workspace"
     },
     "skills": [

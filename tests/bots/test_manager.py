@@ -89,6 +89,7 @@ class BotManagerTests(unittest.TestCase):
         self.assertIn("[access]", text)
         self.assertNotIn("[[runtime.secret_refs]]", text)
         self.assertIn('node_packages = ["typescript@5.8.3"]', text)
+        self.assertIn('user = "root"', text)
         self.assertIn('agents_md = "AGENTS.md"', text)
         self.assertIn('soul_md = "SOUL.md"', text)
         self.assertIn('user_md = "USER.md"', text)
@@ -313,6 +314,45 @@ class BotManagerTests(unittest.TestCase):
         self.assertIn('"mode": "off"', openclaw_config_text)
         self.assertNotIn('"backend": "docker"', openclaw_config_text)
 
+    def test_generate_bot_artifacts_preserves_installed_catalog_skill_content(self) -> None:
+        create_bot(
+            self.work_dir,
+            BotAnswers(
+                display_name="Bundle Bot",
+                role="Generowanie artefaktow",
+                skill_sources=[],
+                system_packages=[],
+                python_packages=[],
+                node_packages=[],
+                secret_names=[],
+                websites=[],
+                databases=[],
+                access_notes=[],
+            ),
+        )
+
+        with patch(
+            "openenv.bots.manager.build_lockfile",
+            side_effect=self._build_stub_lockfile,
+        ):
+            artifacts = generate_bot_artifacts(self.work_dir, "bundle-bot")
+
+        skill_path = (
+            artifacts.bot.manifest_path.parent / "workspace" / "skills" / "free-ride" / "SKILL.md"
+        )
+        skill_path.write_text("Real installed free-ride skill\n", encoding="utf-8")
+
+        with patch(
+            "openenv.bots.manager.build_lockfile",
+            side_effect=self._build_stub_lockfile,
+        ):
+            generate_bot_artifacts(self.work_dir, "bundle-bot")
+
+        self.assertEqual(
+            skill_path.read_text(encoding="utf-8"),
+            "Real installed free-ride skill\n",
+        )
+
     def test_generate_all_bots_stack_writes_shared_compose(self) -> None:
         create_bot(
             self.work_dir,
@@ -446,6 +486,52 @@ class BotManagerTests(unittest.TestCase):
         self.assertEqual(
             preserved_workspace_path.read_text(encoding="utf-8"),
             "keep me\n",
+        )
+
+    def test_generate_all_bots_stack_preserves_installed_shared_catalog_skill_content(self) -> None:
+        create_bot(
+            self.work_dir,
+            BotAnswers(
+                display_name="Bundle Bot",
+                role="Generowanie artefaktow",
+                skill_sources=[],
+                system_packages=[],
+                python_packages=[],
+                node_packages=[],
+                secret_names=[],
+                websites=[],
+                databases=[],
+                access_notes=[],
+            ),
+        )
+
+        with patch(
+            "openenv.bots.manager.build_lockfile",
+            side_effect=self._build_stub_lockfile,
+        ):
+            generate_all_bots_stack(self.work_dir)
+
+        shared_skill_path = (
+            self.work_dir
+            / "bots"
+            / ".all-bots"
+            / "workspace"
+            / "bundle-bot"
+            / "skills"
+            / "free-ride"
+            / "SKILL.md"
+        )
+        shared_skill_path.write_text("Real installed shared free-ride skill\n", encoding="utf-8")
+
+        with patch(
+            "openenv.bots.manager.build_lockfile",
+            side_effect=self._build_stub_lockfile,
+        ):
+            generate_all_bots_stack(self.work_dir)
+
+        self.assertEqual(
+            shared_skill_path.read_text(encoding="utf-8"),
+            "Real installed shared free-ride skill\n",
         )
 
     def test_generate_all_bots_stack_merges_shared_channel_config(self) -> None:
